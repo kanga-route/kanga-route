@@ -1,0 +1,21 @@
+name: Python Syntax Check
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  validate-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Python Syntax
+        # This built-in command scans your /src directory and fails if there are fatal typos
+        run: python -m compileall src/
