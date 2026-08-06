@@ -27,13 +27,27 @@ variable "subnet_id" {
   default = ""
 }
 
+variable "aws_access_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "aws_secret_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 source "amazon-ebs" "ubuntu" {
-  ami_name      = "${var.ami_prefix}-v${formatdate("YYYYMMDDhhmm", timestamp())}"
-  instance_type = "t3.micro"
-  region        = var.aws_region
-  vpc_id                       = var.vpc_id != "" ? var.vpc_id : null
-  subnet_id                    = var.subnet_id != "" ? var.subnet_id : null
-  associate_public_ip_address  = true
+  ami_name                    = "${var.ami_prefix}-v${formatdate("YYYYMMDDhhmm", timestamp())}"
+  instance_type               = "t3.micro"
+  region                      = var.aws_region
+  access_key                  = var.aws_access_key != "" ? var.aws_access_key : null
+  secret_key                  = var.aws_secret_key != "" ? var.aws_secret_key : null
+  vpc_id                      = var.vpc_id != "" ? var.vpc_id : null
+  subnet_id                   = var.subnet_id != "" ? var.subnet_id : null
+  associate_public_ip_address = true
 
   source_ami_filter {
     filters = {
@@ -46,7 +60,6 @@ source "amazon-ebs" "ubuntu" {
   }
 
   ssh_username = "ubuntu"
-  ami_users    = ["603773569022"]
 
   tags = {
     Name        = "Kanga-Route-Appliance"

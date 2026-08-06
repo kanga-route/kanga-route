@@ -255,9 +255,13 @@ To generate an AMI for your AWS account:
 Engineers who are not familiar with Pulumi can easily deploy the appliance via the **AWS EC2 Web Console**:
 
 #### Step 1: Locate Your Baked AMI
-1. Open the [AWS Management Console](https://console.aws.amazon.com/ec2/) and navigate to **EC2 > AMIs**.
+1. Open the [AWS Management Console](https://console.aws.amazon.com/ec2/) in region **`us-east-1`** and navigate to **EC2 > AMIs**.
 2. Change the dropdown filter from *Public images* to **Owned by me**.
-3. Select `Kanga-Route-Appliance` (or search by your AMI ID from Step 3).
+3. Select **`Kanga-Route-Appliance`** (AMI ID: **`ami-03b6c887a2e021920`**).
+
+| Region | AMI ID | Name | Architecture | Quick Launch Link |
+|---|---|---|---|---|
+| `us-east-1` | `ami-03b6c887a2e021920` | `Kanga-Route-Appliance` | x86_64 / amd64 | [Launch Instance in AWS Console 🚀](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-03b6c887a2e021920) |
 
 #### Step 2: Launch EC2 Instance
 1. Click the orange **Launch instance from AMI** button in the top right.
