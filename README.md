@@ -77,23 +77,23 @@ Traditional SaaS email verification services charge recurring subscription fees 
 
 ```mermaid
 graph TD
-    subgraph HubSpot CRM
-        HS[HubSpot Contacts API v3]
+    subgraph HubSpot["HubSpot CRM"]
+        HS["HubSpot Contacts API v3"]
     end
 
-    subgraph Host VM / EC2 Instance (Kanga-Route Appliance)
-        CLI[kanga-route CLI Wrapper] -->|Trigger Run| Compose[Docker Compose Stack]
-        Systemd[systemd: kanga-route.service] -->|Auto-start on boot| Compose
+    subgraph HostVM["Host VM / EC2 Instance (Kanga-Route Appliance)"]
+        CLI["kanga-route CLI Wrapper"] -->|Trigger Run| Compose["Docker Compose Stack"]
+        Systemd["systemd: kanga-route.service"] -->|Auto-start on boot| Compose
 
-        subgraph Docker Compose Container Stack
-            Engine[verifier-engine Container]
-            CacheDB[(dynamodb-local Container)]
+        subgraph DockerStack["Docker Compose Container Stack"]
+            Engine["verifier-engine Container"]
+            CacheDB["dynamodb-local Container"]
         end
     end
 
-    subgraph External Network / Internet
-        DNS[Public DNS Resolvers]
-        MX[Recipient Mail Servers (Port 25)]
+    subgraph External["External Network / Internet"]
+        DNS["Public DNS Resolvers"]
+        MX["Recipient Mail Servers (Port 25)"]
     end
 
     Engine -->|1. Fetch Unverified Contacts| HS
