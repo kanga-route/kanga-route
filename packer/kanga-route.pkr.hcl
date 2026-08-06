@@ -1,0 +1,58 @@
+packer {
+  required_plugins {
+    amazon = {
+      version = ">= 1.2.0"
+      source  = "github.com/hashicorp/amazon"
+    }
+  }
+}
+
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "ami_prefix" {
+  type    = string
+  default = "kanga-route-appliance"
+}
+
+source "amazon-ebs" "ubuntu" {
+  ami_name      = "${var.ami_prefix}-v${formatdate("YYYYMMDDhhmm", timestamp())}"
+  instance_type = "t3.micro"
+  region        = var.aws_region
+
+  source_ami_filter {
+    filters = {
+      name                = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+      root-device-type    = "ebs"
+      virtualization-type = "hvm"
+    }
+    most_recent = true
+    owners      = ["099720109477"] # Canonical
+  }
+
+  ssh_username = "ubuntu"
+}
+
+build {
+  name = "kanga-route-bakery"
+  sources = [
+    "source.amazon-ebs.ubuntu"
+  ]
+
+  provisioner "shell" {
+    inline = [
+      "mkdir -p /tmp/kanga-route"
+    ]
+  }
+
+  provisioner "file" {
+    source      = "./"
+    destination = "/tmp/kanga-route"
+  }
+
+  provisioner "shell" {
+    script = "packer/scripts/provision.sh"
+  }
+}
