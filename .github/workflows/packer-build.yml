@@ -70,24 +70,25 @@ jobs:
               
               # Execute safe table row prepend without replacing historical catalog rows
               python3 -c "
-          import json, re
+          import json, re, datetime
 
           manifest = json.load(open('packer-manifest.json'))
           new_ami = manifest['builds'][-1]['artifact_id'].split(':')[-1]
           ver = '$VER'
+          today = datetime.date.today().isoformat()
 
           # 1. Update README.md catalog table safely
           readme = open('README.md').read()
           if ver in readme:
               readme = re.sub(
-                  rf'\| \*\*{re.escape(ver)}\*\* \| [^|]+ \| ([^|]+) \| \*\*ami-[a-z0-9]+\*\* \|',
-                  f'| **\`{ver}\`** | **Latest (Production)** | \\1 | **\`{new_ami}\`** |',
+                  rf'\| \*\*{re.escape(ver)}\*\* \| [^|]+ \| [^|]+ \| ([^|]+) \| \*\*ami-[a-z0-9]+\*\* \|',
+                  f'| **\`{ver}\`** | \`{today}\` | **Latest (Stable)** | \\1 | **\`{new_ami}\`** |',
                   readme
               )
           else:
-              readme = readme.replace('**Latest (Production)**', '\`Supported\`')
-              new_row = f'| **\`{ver}\`** | **Latest (Production)** | \`us-east-1\` (N. Virginia) | **\`{new_ami}\`** | [**Launch {ver} Appliance 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId={new_ami}) |\n'
-              header = '| Version | Release Status | AWS Region | AMI ID | Quick Launch |\n|---|---|---|---|---|\n'
+              readme = readme.replace('**Latest (Stable)**', '\`Archived\`')
+              new_row = f'| **\`{ver}\`** | \`{today}\` | **Latest (Stable)** | \`us-east-1\` (N. Virginia) | **\`{new_ami}\`** | [**Launch {ver} Appliance 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId={new_ami}) |\n'
+              header = '| Version | Release Date | Status | AWS Region | AMI ID | Quick Launch |\n|---|---|---|---|---|---|\n'
               readme = readme.replace(header, header + new_row)
           open('README.md', 'w').write(readme)
 
