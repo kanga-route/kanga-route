@@ -1,16 +1,17 @@
 """CLI entrypoint for Kanga-Route verification engine.
 
-Orchestrates CRM contact fetching -> Cache lookup -> Verification Engine execution -> Cache storage -> CRM batch writeback.
+Orchestrates CRM contact fetching -> Cache lookup -> Async Verification Engine execution -> Cache storage -> CRM batch writeback.
 """
 
 import sys
 import logging
 import argparse
+import asyncio
 from typing import Optional, List
 
 from kanga_route.crm.hubspot import HubSpotClient
 from kanga_route.cache.dynamodb import DynamoDBCacheStore
-from kanga_route.engine.verifier import VerificationEngine
+from kanga_route.engine.verifier import VerificationEngine, AsyncVerificationEngine
 from kanga_route.contracts import ICRMClient, ICacheStore, IVerificationPipeline
 from kanga_route.models import VerificationResult
 
@@ -46,16 +47,16 @@ def run_pipeline(
     logger.info(f"Retrieved {len(contacts)} contact(s) to evaluate.")
     results: List[VerificationResult] = []
 
-    # 3. Process each contact with cache lookup & engine execution
+    # 3. Process each contact with cache lookup & async engine execution
     cache_hits = 0
     cache_misses = 0
+    contacts_to_verify = []
 
     for contact in contacts:
         email = contact.email
         if not email:
             continue
 
-        # Check cache
         cached_result = cache_store.get(email)
         if cached_result:
             cache_hits += 1
@@ -63,10 +64,21 @@ def run_pipeline(
             results.append(cached_result)
         else:
             cache_misses += 1
-            result = engine.verify(email)
-            result.contact_id = contact.id
-            cache_store.put(result)
-            results.append(result)
+            contacts_to_verify.append(contact)
+
+    if contacts_to_verify:
+        async_engine = AsyncVerificationEngine(sync_engine=engine)
+        emails = [c.email for c in contacts_to_verify]
+        
+        async def _run_async_verifications():
+            return await async_engine.verify_batch_async(emails)
+
+        verified_results = asyncio.run(_run_async_verifications())
+
+        for contact, res in zip(contacts_to_verify, verified_results):
+            res.contact_id = contact.id
+            cache_store.put(res)
+            results.append(res)
 
     logger.info(
         f"Evaluation complete. Cache hits: {cache_hits}, Engine verifications: {cache_misses}."

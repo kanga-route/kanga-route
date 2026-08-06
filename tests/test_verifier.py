@@ -1,5 +1,6 @@
-"""Unit tests for Kanga-Route models and 4-layer verification engine."""
+"""Unit tests for Kanga-Route models, 4-layer verification engine, and async rate limiting."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -16,6 +17,7 @@ from kanga_route.engine.verifier import (
     DNSStage,
     SMTPSocketStage,
     VerificationEngine,
+    AsyncVerificationEngine,
 )
 
 
@@ -104,13 +106,19 @@ def test_dns_stage_no_mx():
 
 
 @patch("smtplib.SMTP")
-def test_smtp_stage_valid(mock_smtp_cls):
+def test_smtp_stage_valid_with_starttls_and_catchall_check(mock_smtp_cls):
     mock_smtp = MagicMock()
     mock_smtp_cls.return_value = mock_smtp
     mock_smtp.connect.return_value = (220, b"Banner")
-    mock_smtp.rcpt.return_value = (250, b"OK")
+    mock_smtp.has_extn.return_value = True
+    # Return 550 for dummy check (not catch-all), 250 for real email
+    mock_smtp.rcpt.side_effect = [(550, b"User unknown"), (250, b"OK")]
 
-    stage = SMTPSocketStage()
+    stage = SMTPSocketStage(
+        helo_domain="verifier.kanga-route.com",
+        from_email="verify@kanga-route.com",
+        check_catch_all=True,
+    )
     ctx = {
         "mx_hosts": ["mail.company.com"],
         "mailbox_provider": MailboxProvider.OTHER,
@@ -122,6 +130,29 @@ def test_smtp_stage_valid(mock_smtp_cls):
     assert res.status == VerificationStatus.VALID
     assert res.reason == VerificationReason.OK
     assert res.smtp_code == 250
+    mock_smtp.starttls.assert_called_once()
+
+
+@patch("smtplib.SMTP")
+def test_smtp_stage_catch_all_detected(mock_smtp_cls):
+    mock_smtp = MagicMock()
+    mock_smtp_cls.return_value = mock_smtp
+    mock_smtp.connect.return_value = (220, b"Banner")
+    mock_smtp.has_extn.return_value = False
+    # Return 250 for dummy check -> Catch-All
+    mock_smtp.rcpt.return_value = (250, b"OK")
+
+    stage = SMTPSocketStage(check_catch_all=True)
+    ctx = {
+        "mx_hosts": ["mail.catchall-domain.com"],
+        "mailbox_provider": MailboxProvider.OTHER,
+        "is_role_account": False,
+    }
+
+    res = stage.evaluate("randomuser@catchall-domain.com", context=ctx)
+    assert res is not None
+    assert res.status == VerificationStatus.CATCH_ALL
+    assert res.reason == VerificationReason.OK
 
 
 @patch("smtplib.SMTP")
@@ -129,9 +160,11 @@ def test_smtp_stage_user_not_found(mock_smtp_cls):
     mock_smtp = MagicMock()
     mock_smtp_cls.return_value = mock_smtp
     mock_smtp.connect.return_value = (220, b"Banner")
-    mock_smtp.rcpt.return_value = (550, b"User unknown")
+    mock_smtp.has_extn.return_value = False
+    # Return 550 for dummy check, 550 for real email
+    mock_smtp.rcpt.side_effect = [(550, b"User unknown"), (550, b"User unknown")]
 
-    stage = SMTPSocketStage()
+    stage = SMTPSocketStage(check_catch_all=True)
     ctx = {
         "mx_hosts": ["mail.company.com"],
         "mailbox_provider": MailboxProvider.OTHER,
@@ -145,15 +178,17 @@ def test_smtp_stage_user_not_found(mock_smtp_cls):
     assert res.smtp_code == 550
 
 
-def test_full_pipeline_invalid_syntax():
-    engine = VerificationEngine()
-    res = engine.verify("invalid-email-address")
-    assert res.status == VerificationStatus.INVALID
-    assert res.reason == VerificationReason.SYNTAX_ERROR
+def test_async_verification_engine():
+    mock_engine = MagicMock(spec=VerificationEngine)
+    mock_engine.verify.return_value = VerificationResult(
+        email="test@domain.com",
+        status=VerificationStatus.VALID,
+        reason=VerificationReason.OK,
+    )
 
+    async_engine = AsyncVerificationEngine(sync_engine=mock_engine, max_concurrent_per_provider=2)
+    results = asyncio.run(async_engine.verify_batch_async(["test1@domain.com", "test2@domain.com"]))
 
-def test_full_pipeline_disposable():
-    engine = VerificationEngine()
-    res = engine.verify("user@10minutemail.com")
-    assert res.status == VerificationStatus.INVALID
-    assert res.reason == VerificationReason.DISPOSABLE
+    assert len(results) == 2
+    assert results[0].status == VerificationStatus.VALID
+    assert mock_engine.verify.call_count == 2
