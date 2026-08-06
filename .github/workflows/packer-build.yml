@@ -1,11 +1,15 @@
-name: Packer Appliance Bakery
+name: Packer Appliance Bakery & Release Promotion
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    inputs:
+      promote_to_readme:
+        description: 'Promote newly baked AMI ID to README.md and docs'
+        required: true
+        type: boolean
+        default: false
+  release:
+    types: [published]
 
 jobs:
   packer-build:
@@ -30,7 +34,6 @@ jobs:
         run: packer validate packer/kanga-route.pkr.hcl
 
       - name: Build AMI Image
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -41,21 +44,26 @@ jobs:
             -var "aws_secret_key=${AWS_SECRET_ACCESS_KEY}" \
             packer/kanga-route.pkr.hcl
 
-      - name: Auto-Update README.md with New AMI ID
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+      - name: Upload Candidate Manifest Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packer-candidate-manifest
+          path: packer-manifest.json
+
+      - name: Promote AMI ID to README.md (Gated Step)
+        if: github.event_name == 'release' || github.event.inputs.promote_to_readme == 'true'
         run: |
           if [ -f packer-manifest.json ]; then
             NEW_AMI=$(python3 -c "import json; data=json.load(open('packer-manifest.json')); print(data['builds'][-1]['artifact_id'].split(':')[-1])")
-            echo "Extracted new AMI ID: $NEW_AMI"
+            echo "Promoting AMI ID to production documentation: $NEW_AMI"
             
             if [ -n "$NEW_AMI" ] && [[ "$NEW_AMI" =~ ^ami- ]]; then
-              # Replace old AMI IDs in README.md and setup.md
               sed -i -E "s/ami-[a-z0-9]+/$NEW_AMI/g" README.md docs/setup.md
               
               git config --global user.name "github-actions[bot]"
               git config --global user.email "github-actions[bot]@users.noreply.github.com"
               git add README.md docs/setup.md
-              git diff --staged --quiet || git commit -m "docs: auto-update AMI ID to $NEW_AMI from Packer build"
+              git diff --staged --quiet || git commit -m "docs: promote production AMI ID to $NEW_AMI"
               git push origin master || true
             fi
           fi
