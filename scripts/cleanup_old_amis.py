@@ -4,7 +4,7 @@ Kanga-Route AMI Retention & Catalog Sync Script
 
 Retention Policy:
 1. Retains the 5 most recent AMI builds globally.
-2. ALWAYS retains the latest build for each MAJOR version branch (e.g., latest v1.x.x, latest v2.x.x).
+2. ALWAYS retains the latest build for each MINOR version branch (e.g., latest v1.0.x, latest v1.1.x, latest v2.0.x).
 3. Deregisters older patch AMIs and deletes their backing EBS snapshots to minimize AWS storage costs.
 4. Cleans up README.md and docs catalog tables to remove dead links for pruned AMIs.
 """
@@ -31,22 +31,23 @@ def prune_old_amis(region="us-east-1"):
     
     keep_ami_ids = set()
     pruned_ami_ids = set()
-    major_anchors = {}
+    minor_anchors = {}
     
     # Rule A: Always keep the 5 most recent AMIs globally
     for img in images[:5]:
         keep_ami_ids.add(img["ImageId"])
     
-    # Rule B: Always keep the latest AMI for each MAJOR version branch (e.g. v1, v2)
+    # Rule B: Always keep the latest AMI for each MINOR version branch (e.g. v1.0, v1.1, v1.2, v2.0)
     for img in images:
-        ver_tag = next((t["Value"] for t in img.get("Tags", []) if t["Key"] == "Version"), "1.0.0")
-        major_ver = ver_tag.split(".")[0].lstrip("v")
-        if major_ver not in major_anchors:
-            major_anchors[major_ver] = img["ImageId"]
+        ver_tag = next((t["Value"] for t in img.get("Tags", []) if t["Key"] == "Version"), "1.0.0").lstrip("v")
+        parts = ver_tag.split(".")
+        minor_branch = f"v{parts[0]}.{parts[1]}" if len(parts) >= 2 else f"v{parts[0]}.0"
+        if minor_branch not in minor_anchors:
+            minor_anchors[minor_branch] = img["ImageId"]
             keep_ami_ids.add(img["ImageId"])
     
     print(f"Total AMIs evaluated: {len(images)}")
-    print(f"AMIs retained under policy: {len(keep_ami_ids)} (Major anchors: {major_anchors})")
+    print(f"AMIs retained under policy: {len(keep_ami_ids)} (Minor anchors: {minor_anchors})")
     
     # Rule C: Prune expired AMIs and delete their EBS snapshots
     pruned_count = 0
@@ -80,7 +81,6 @@ def prune_old_amis(region="us-east-1"):
         new_lines = []
         removed = 0
         for line in lines:
-            # Check if line contains any pruned AMI ID
             if any(pruned_id in line for pruned_id in pruned_ami_ids):
                 removed += 1
                 continue
