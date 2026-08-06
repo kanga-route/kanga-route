@@ -1,13 +1,14 @@
-name: Pull Request Validation
+name: Pull Request CI & Test Suite
 
 on:
   pull_request:
     branches: [ main, master ]
 
 jobs:
-  validate-python:
-    name: Python Syntax Check
+  test-python:
+    name: Run Pytest Unit Tests
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -15,29 +16,49 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
-      - name: Check Python Syntax
-        # Scans the /src directory and fails if there are fatal typos
-        run: python -m compileall src/
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-  # Future Job Stub: Packer Validation
-  # validate-packer:
-  #   name: Packer Template Check
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout Code
-  #       uses: actions/checkout@v4
-  #     - name: Setup Packer
-  #       uses: hashicorp/setup-packer@main
-  #     - name: Run Packer Validate
-  #       run: packer validate packer/
+      - name: Run Pytest Test Suite
+        env:
+          PYTHONPATH: src
+        run: pytest --verbose
 
-  # Future Job Stub: Pulumi Preview
-  # validate-infrastructure:
-  #   name: Pulumi Infrastructure Preview
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout Code
-  #       uses: actions/checkout@v4
-  #     # Add Pulumi setup and preview steps here
+  validate-packer:
+    name: Validate Packer Appliance Template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v2
+        with:
+          version: 'latest'
+
+      - name: Initialize Packer Plugins
+        run: packer init packer/kanga-route.pkr.hcl
+
+      - name: Validate Packer Template
+        run: packer validate packer/kanga-route.pkr.hcl
+
+  validate-infrastructure:
+    name: Check Pulumi IaC Syntax
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Check Pulumi Infrastructure Syntax
+        run: python -m compileall infra/
