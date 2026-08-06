@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.png" alt="Kanga-Route Banner" width="100%">
+  <img src="https://raw.githubusercontent.com/kanga-route/kanga-route/master/banner.png" alt="Kanga-Route Banner" width="100%">
 </p>
 
 # Kanga-Route 🦘
