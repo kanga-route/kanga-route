@@ -28,6 +28,8 @@ Launch pre-built Kanga-Route virtual appliances directly into your AWS account:
 > - **`Latest (Stable)`**: Newest validated production AMI build.
 > - **`Archived`**: Previous historical AMI builds retained for reference.
 
+> 📌 **Version Pinning**: To pin your deployment to a specific release (e.g. `v1.0.0`), select its specific AMI ID from the catalog table above, or configure your IaC stack via `pulumi config set kanga-route-infra:amiId <AMI_ID>`.
+
 > [!IMPORTANT]
 > **Prerequisites**: Configure 5 custom contact properties in HubSpot and submit the AWS Port 25 unblock request before running production verifications. See the complete [Setup & Operations Guide](docs/setup.md).
 
