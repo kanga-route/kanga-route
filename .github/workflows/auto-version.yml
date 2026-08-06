@@ -50,13 +50,19 @@ jobs:
         run: |
           NEW_VER="${{ steps.version.outputs.new_version }}"
           if [ -n "$NEW_VER" ]; then
-            python3 -c "
-          import re
-          for filepath in ['pyproject.toml', 'packer/kanga-route.pkr.hcl']:
-              content = open(filepath).read()
-              new_content = re.sub(r'(version\s*=\s*\")[^\"]+(\")', r'\g<1>' + '$NEW_VER' + r'\g<2>', new_content, flags=re.IGNORECASE)
-              open(filepath, 'w').write(new_content)
-          "
+            export NEW_VER
+            python3 - <<'PY'
+import os
+import re
+
+new_ver = os.environ["NEW_VER"]
+
+for filepath in ["pyproject.toml", "packer/kanga-route.pkr.hcl"]:
+    content = open(filepath).read()
+    pattern = r'(version\s*=\s*")[^"]+(")' if filepath.endswith(".toml") else r'(Version\s*=\s*")[^"]+(")'
+    new_content = re.sub(pattern, r"\\1" + new_ver + r"\\2", content)
+    open(filepath, "w").write(new_content)
+PY
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git add pyproject.toml packer/kanga-route.pkr.hcl
