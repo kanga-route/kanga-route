@@ -28,7 +28,35 @@ Launch pre-built Kanga-Route virtual appliances directly into your AWS account:
 > - **`Latest (Stable)`**: Newest validated production AMI build.
 > - **`Archived`**: Previous historical AMI builds retained for reference.
 
-> 📌 **Version Pinning**: To pin your deployment to a specific release (e.g. `v1.0.0`), select its specific AMI ID from the catalog table above, or configure your IaC stack via `pulumi config set kanga-route-infra:amiId <AMI_ID>`.
+### 📌 Programmatic Version Pinning (AWS CLI & Terraform)
+
+For DevOps automation where hardcoding static AMI IDs is undesirable, query the public Kanga-Route registry (`603773569022`) dynamically by version tag:
+
+```bash
+# Query public AMI ID for version v1.0.0 via AWS CLI
+aws ec2 describe-images \
+  --owners 603773569022 \
+  --filters "Name=tag:Application,Values=Kanga-Route" "Name=tag:Version,Values=1.0.0" \
+  --query 'Images[0].ImageId' --output text
+```
+
+```hcl
+# Dynamic Version Pinning in Terraform
+data "aws_ami" "kanga_route" {
+  most_recent = true
+  owners      = ["603773569022"]
+
+  filter {
+    name   = "tag:Application"
+    values = ["Kanga-Route"]
+  }
+
+  filter {
+    name   = "tag:Version"
+    values = ["1.0.0"] # Pin exact version tag
+  }
+}
+```
 
 > [!IMPORTANT]
 > **Prerequisites**: Configure 5 custom contact properties in HubSpot and submit the AWS Port 25 unblock request before running production verifications. See the complete [Setup & Operations Guide](docs/setup.md).
