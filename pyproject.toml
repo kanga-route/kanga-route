@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kanga-route"
-version = "0.1.0"
+version = "1.0.0"
 description = "Containerized Virtual Appliance email verification and routing engine for HubSpot"
 authors = [{name = "Seth Hereford"}]
 readme = "README.md"

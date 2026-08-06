@@ -16,13 +16,47 @@
 
 ---
 
-## 🚀 Quick Launch (Pre-Built Public AMI)
+## 🚀 Appliance Release Registry & AMI Catalog
 
-Deploy the official Kanga-Route virtual appliance directly into your AWS account with a single click:
+Launch pre-built Kanga-Route virtual appliances directly into your AWS account:
 
-| AWS Region | AMI ID | Name | Visibility | Quick Launch |
-|---|---|---|---|---|
-| **`us-east-1`** (N. Virginia) | **`ami-0621206b8c7bfc85c`** | `Kanga-Route-Appliance` | **Public** | [**Launch Appliance in AWS Console 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-0621206b8c7bfc85c) |
+| Version | Release Date | Status | AWS Region | AMI ID | Quick Launch |
+|---|---|---|---|---|---|
+| **`v1.0.0`** | `2026-08-06` | **Latest (Stable)** | `us-east-1` (N. Virginia) | **`ami-0621206b8c7bfc85c`** | [**Launch v1.0.0 Appliance 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-0621206b8c7bfc85c) |
+
+> 💡 **Release Status Legend**:
+> - **`Latest (Stable)`**: Newest validated production AMI build.
+> - **`Archived`**: Previous historical AMI builds retained for reference.
+
+### 📌 Programmatic Version Pinning (AWS CLI & Terraform)
+
+For DevOps automation where hardcoding static AMI IDs is undesirable, query the public Kanga-Route registry (`603773569022`) dynamically by version tag:
+
+```bash
+# Query public AMI ID for version v1.0.0 via AWS CLI
+aws ec2 describe-images \
+  --owners 603773569022 \
+  --filters "Name=tag:Application,Values=Kanga-Route" "Name=tag:Version,Values=1.0.0" \
+  --query 'Images[0].ImageId' --output text
+```
+
+```hcl
+# Dynamic Version Pinning in Terraform
+data "aws_ami" "kanga_route" {
+  most_recent = true
+  owners      = ["603773569022"]
+
+  filter {
+    name   = "tag:Application"
+    values = ["Kanga-Route"]
+  }
+
+  filter {
+    name   = "tag:Version"
+    values = ["1.0.0"] # Pin exact version tag
+  }
+}
+```
 
 > [!IMPORTANT]
 > **Prerequisites**: Configure 5 custom contact properties in HubSpot and submit the AWS Port 25 unblock request before running production verifications. See the complete [Setup & Operations Guide](docs/setup.md).
@@ -61,6 +95,7 @@ For detailed step-by-step installation guides, architecture specifications, and 
 
 | Guide | Description | Link |
 |---|---|---|
+| 📜 **Changelog** | Version history, release milestones, and feature updates | [**CHANGELOG.md**](CHANGELOG.md) |
 | 📖 **Setup & Operations Guide** | Step-by-step HubSpot setup, DNS records (A, PTR, SPF), AWS Console / Pulumi deployment, and connection methods | [**docs/setup.md**](docs/setup.md) |
 | 🎯 **HubSpot User Story & Sales Workflow** | Deliverability protection, sequence un-enrollment workflows, and sales analytics | [**docs/hubspot-user-story.md**](docs/hubspot-user-story.md) |
 | 📐 **Architecture Overview** | System layout, topology diagram, container stack, and host control plane | [**docs/architecture.md**](docs/architecture.md) |
