@@ -11,18 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This project strictly adheres to `MAJOR.MINOR.PATCH` versioning rules:
 
-- **MAJOR (`1.x.x` $\rightarrow$ `2.0.0`)**: Incompatible API, database schema, or breaking environment variable changes.
+- **MAJOR (`1.x.x` → `2.0.0`)**: Incompatible API, database schema, or breaking environment variable changes.
   - Changes to HubSpot custom contact property internal names.
   - Breaking changes to `/opt/kanga-route/.env` keys or database schemas requiring manual data migration.
   - Architectural shifts replacing Docker Compose or DynamoDB data contracts.
 
-- **MINOR (`1.0.x` $\rightarrow$ `1.1.0`)**: Backward-compatible new features, CRM connectors, or performance enhancements.
+- **MINOR (`1.0.x` → `1.1.0`)**: Backward-compatible new features, CRM connectors, or performance enhancements.
   - Adding new verification layers (e.g., SPF/DKIM verification, webhooks, Slack/Teams alerts).
   - Adding new CRM connectors (e.g., Salesforce, Marketo, ActiveCampaign).
   - Performance improvements, dynamic blocklist fetching, or new container capabilities.
   - Infrastructure expansions (e.g., Terraform support, ARM64 `t4g` AMIs).
 
-- **PATCH (`1.0.0` $\rightarrow$ `1.0.1`)**: Backward-compatible bug fixes, security patches, blocklist updates, and documentation.
+- **PATCH (`1.0.0` → `1.0.1`)**: Backward-compatible bug fixes, security patches, blocklist updates, and documentation.
   - Bug fixes for edge-case SMTP timeouts, regex parsing, or DNS resolution logic.
   - Updates to the static disposable domain blocklist or MX provider regex patterns.
   - Documentation updates (`README.md`, setup guides) and CI/CD workflow fixes.
