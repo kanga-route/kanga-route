@@ -65,7 +65,7 @@ source "amazon-ebs" "ubuntu" {
   tags = {
     Name        = "Kanga-Route-Appliance"
     Application = "Kanga-Route"
-    Version     = "0.1.0"
+    Version     = "1.0.0"
     Description = "Containerized Virtual Appliance for HubSpot email verification"
     ManagedBy   = "Packer"
   }
