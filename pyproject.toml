@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kanga-route"
+version = "0.1.0"
+description = "Containerized Virtual Appliance email verification and routing engine for HubSpot"
+authors = [{name = "Seth Hereford"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "boto3>=1.28.0",
+    "requests>=2.31.0",
+    "dnspython>=2.4.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

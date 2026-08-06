@@ -1,0 +1,61 @@
+name: Packer Appliance Bakery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  packer-build:
+    name: Build Kanga-Route Appliance AMI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v2
+        with:
+          version: 'latest'
+
+      - name: Initialize Packer Plugins
+        run: packer init packer/kanga-route.pkr.hcl
+
+      - name: Validate Packer Template
+        run: packer validate packer/kanga-route.pkr.hcl
+
+      - name: Build AMI Image
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          packer build \
+            -var "aws_region=us-east-1" \
+            -var "aws_access_key=${AWS_ACCESS_KEY_ID}" \
+            -var "aws_secret_key=${AWS_SECRET_ACCESS_KEY}" \
+            packer/kanga-route.pkr.hcl
+
+      - name: Auto-Update README.md with New AMI ID
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+        run: |
+          if [ -f packer-manifest.json ]; then
+            NEW_AMI=$(python3 -c "import json; data=json.load(open('packer-manifest.json')); print(data['builds'][-1]['artifact_id'].split(':')[-1])")
+            echo "Extracted new AMI ID: $NEW_AMI"
+            
+            if [ -n "$NEW_AMI" ] && [[ "$NEW_AMI" =~ ^ami- ]]; then
+              # Replace old AMI IDs in README.md and setup.md
+              sed -i -E "s/ami-[a-z0-9]+/$NEW_AMI/g" README.md docs/setup.md
+              
+              git config --global user.name "github-actions[bot]"
+              git config --global user.email "github-actions[bot]@users.noreply.github.com"
+              git add README.md docs/setup.md
+              git diff --staged --quiet || git commit -m "docs: auto-update AMI ID to $NEW_AMI from Packer build"
+              git push origin master || true
+            fi
+          fi

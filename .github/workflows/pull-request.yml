@@ -1,0 +1,43 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate-python:
+    name: Python Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Python Syntax
+        # Scans the /src directory and fails if there are fatal typos
+        run: python -m compileall src/
+
+  # Future Job Stub: Packer Validation
+  # validate-packer:
+  #   name: Packer Template Check
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
+  #     - name: Setup Packer
+  #       uses: hashicorp/setup-packer@main
+  #     - name: Run Packer Validate
+  #       run: packer validate packer/
+
+  # Future Job Stub: Pulumi Preview
+  # validate-infrastructure:
+  #   name: Pulumi Infrastructure Preview
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
+  #     # Add Pulumi setup and preview steps here
