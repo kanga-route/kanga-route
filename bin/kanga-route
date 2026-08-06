@@ -29,7 +29,7 @@ shift
 case "$COMMAND" in
     run)
         echo "[kanga-route] Triggering container verification run..."
-        cd "$COMPOSE_DIR" && docker compose run --rm verifier-engine
+        cd "$COMPOSE_DIR" && docker compose run --rm engine
         ;;
     status)
         echo "[kanga-route] Checking container stack health..."

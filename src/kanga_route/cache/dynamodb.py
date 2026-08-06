@@ -33,11 +33,15 @@ class DynamoDBCacheStore(ICacheStore):
             or os.getenv("DYNAMODB_TABLE_NAME")
             or "KangaRouteCache"
         )
-        self.endpoint_url = (
-            endpoint_url
-            if endpoint_url is not None
-            else os.getenv("DYNAMODB_ENDPOINT_URL")
-        )
+        use_local = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
+        if endpoint_url is not None:
+            self.endpoint_url = endpoint_url
+        elif os.getenv("DYNAMODB_ENDPOINT_URL"):
+            self.endpoint_url = os.getenv("DYNAMODB_ENDPOINT_URL")
+        elif use_local:
+            self.endpoint_url = "http://localhost:8000"
+        else:
+            self.endpoint_url = None
         self.region_name = (
             region_name or os.getenv("AWS_REGION") or "us-east-1"
         )
