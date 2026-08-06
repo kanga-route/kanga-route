@@ -15,14 +15,15 @@
   - [3. Dual-Mode Caching Strategy](#3-dual-mode-caching-strategy)
   - [4. Host OS Control Plane CLI](#4-host-os-control-plane-cli)
   - [5. Automated Image Bakery (Packer)](#5-automated-image-bakery-packer)
-  - [6. Cloud Infrastructure (Pulumi)](#6-cloud-infrastructure-pulumi)
+  - [6. Deployment Options (AWS Console vs. Pulumi)](#6-deployment-options-aws-console-vs-pulumi)
 - [Prerequisites](#prerequisites)
-- [Step-by-Step Guide for Junior Cloud Engineers](#step-by-step-guide-for-junior-cloud-engineers)
+- [Step-by-Step Deployment Guides](#step-by-step-deployment-guides)
   - [Part 1: Local Setup \& Testing](#part-1-local-setup--testing)
   - [Part 2: Using the `kanga-route` Host CLI](#part-2-using-the-kanga-route-host-cli)
   - [Part 3: Baking the AMI Image with Packer](#part-3-baking-the-ami-image-with-packer)
-  - [Part 4: Deploying to AWS with Pulumi](#part-4-deploying-to-aws-with-pulumi)
-  - [Part 5: Production AWS Networking Requirements](#part-5-production-aws-networking-requirements)
+  - [Part 4A: AWS Console Deployment (No IaC / No Pulumi Required)](#part-4a-aws-console-deployment-no-iac--no-pulumi-required)
+  - [Part 4B: Automated Pulumi IaC Deployment](#part-4b-automated-pulumi-iac-deployment)
+  - [Part 5: Mandatory Production AWS Networking (Port 25 \& rDNS)](#part-5-mandatory-production-aws-networking-port-25--rdns)
 - [Troubleshooting Guide](#troubleshooting-guide)
 - [Project Directory Structure](#project-directory-structure)
 
@@ -115,14 +116,12 @@ A native Bash CLI tool (`/usr/local/bin/kanga-route`) is baked directly into the
 - `kanga-route schedule "<cron_expr>"`: Updates the host OS cron schedule automatically.
 
 ### 5. Automated Image Bakery (Packer)
-Refers to **ADR 0001**. Uses HashiCorp Packer (`packer/kanga-route.pkr.hcl`) and a shell provisioner (`packer/scripts/provision.sh`) to bake Docker, Docker Compose, systemd unit files, pre-pulled images, and the host CLI into an Amazon Machine Image (AMI). A GitHub Actions workflow (`.github/workflows/packer-build.yml`) automates AMI builds on release.
+Refers to **ADR 0001**. Uses HashiCorp Packer (`packer/kanga-route.pkr.hcl`) and a shell provisioner (`packer/scripts/provision.sh`) to bake Docker, Docker Compose, systemd unit files, pre-pulled images, and the host CLI into a pre-packaged Amazon Machine Image (AMI). A GitHub Actions workflow (`.github/workflows/packer-build.yml`) automates AMI builds on release.
 
-### 6. Cloud Infrastructure (Pulumi)
-A complete Infrastructure-as-Code stack written in Python (`infra/__main__.py`) provisions all required AWS resources:
-- Dedicated VPC, Public Subnet, Internet Gateway, and Route Table.
-- Security Group configured with outbound egress rules for TCP Port 25 (SMTP), Port 53 (DNS), Port 443 (HTTPS), and Port 80.
-- IAM Role and Instance Profile granting DynamoDB permissions.
-- Elastic IP (EIP) attached to the EC2 instance for static public IP addressing and Reverse DNS (rDNS).
+### 6. Deployment Options (AWS Console vs. Pulumi)
+Engineers can deploy the appliance using either method:
+- **AWS Console UI (Click-Ops):** Non-IaC familiar engineers can launch the generated AMI directly through the standard AWS EC2 Console wizard with zero Pulumi CLI commands required.
+- **Pulumi IaC Stack:** Fully automated Infrastructure-as-Code stack for DevOps engineers desiring automated CI/CD pipeline deployments.
 
 ---
 
@@ -133,12 +132,12 @@ Before starting, ensure your local workstation or administrative environment has
 1. **Docker Desktop / Docker Engine** (v20.10+) & **Docker Compose** (v2.0+)
 2. **Python** (v3.9 or higher)
 3. **Git**
-4. **AWS CLI** & **HashiCorp Packer** (optional, required only for AMI baking)
-5. **Pulumi CLI** (optional, required only for AWS cloud infrastructure deployment)
+4. **AWS Account & Credentials** (with permissions to create AMIs, EC2 instances, and Elastic IPs)
+5. **HashiCorp Packer** (for baking the AMI)
 
 ---
 
-## Step-by-Step Guide for Junior Cloud Engineers
+## Step-by-Step Deployment Guides
 
 ### Part 1: Local Setup & Testing
 
@@ -196,10 +195,6 @@ Trigger the containerized verifier engine:
 ```bash
 docker compose run --rm engine
 ```
-You will see output similar to:
-```text
-2026-08-06 06:05:25,919 [INFO] kanga_route.main: Starting Kanga-Route batch verification run (limit=100)...
-```
 
 ---
 
@@ -232,7 +227,7 @@ On a provisioned appliance (or locally), use the wrapper script in `./bin/kanga-
 
 ### Part 3: Baking the AMI Image with Packer
 
-When preparing a production machine image for AWS deployment:
+To generate an AMI for your AWS account:
 
 1. **Initialize Packer Plugins:**
    ```bash
@@ -248,48 +243,83 @@ When preparing a production machine image for AWS deployment:
    ```bash
    packer build -var "aws_region=us-east-1" packer/kanga-route.pkr.hcl
    ```
-   *Packer will output the newly registered AMI ID (e.g. `ami-0123456789abcdef0`).*
+   *Packer will register the AMI in your AWS account and display the output:*
+   ```text
+   ==> Finds created AMI: ami-0123456789abcdef0 (Kanga-Route-Appliance)
+   ```
 
 ---
 
-### Part 4: Deploying to AWS with Pulumi
+### Part 4A: AWS Console Deployment (No IaC / No Pulumi Required)
 
-To provision the full cloud infrastructure on AWS:
+Engineers who are not familiar with Pulumi can easily deploy the appliance via the **AWS EC2 Web Console**:
+
+#### Step 1: Locate Your Baked AMI
+1. Open the [AWS Management Console](https://console.aws.amazon.com/ec2/) and navigate to **EC2 > AMIs**.
+2. Change the dropdown filter from *Public images* to **Owned by me**.
+3. Select `Kanga-Route-Appliance` (or search by your AMI ID from Step 3).
+
+#### Step 2: Launch EC2 Instance
+1. Click the orange **Launch instance from AMI** button in the top right.
+2. **Name:** Enter `Kanga-Route-Appliance`.
+3. **Instance Type:** Select `t3.micro` or `t4g.micro` (low-cost, eligible for free tier).
+4. **Key Pair:** Select an existing SSH key pair (or create a new one to access the VM).
+5. **Network Settings (Security Group):**
+   - Click **Create Security Group**.
+   - Allow **SSH (Port 22)** from *My IP*.
+   - Ensure outbound traffic allows Port 25 (SMTP), Port 53 (DNS), Port 443 (HTTPS), and Port 80.
+6. Click **Launch Instance**.
+
+#### Step 3: Allocate and Associate Elastic IP (Static Public IP)
+1. In the EC2 Console sidebar, navigate to **Network & Security > Elastic IPs**.
+2. Click **Allocate Elastic IP address** and click **Allocate**.
+3. Select the newly created Elastic IP, click **Actions > Associate Elastic IP address**.
+4. Choose Instance `Kanga-Route-Appliance` and click **Associate**.
+
+#### Step 4: Insert Your HubSpot Token & Start Appliance
+1. Connect to your instance via SSH:
+   ```bash
+   ssh -i /path/to/your-key.pem ubuntu@<YOUR_ELASTIC_IP>
+   ```
+2. Open the appliance environment file:
+   ```bash
+   sudo nano /opt/kanga-route/.env
+   ```
+3. Paste your HubSpot Private App Token:
+   ```env
+   HUBSPOT_ACCESS_TOKEN=pat-na1-your-actual-hubspot-token
+   ```
+4. Run your first live verification sync using the built-in CLI:
+   ```bash
+   kanga-route run
+   ```
+
+---
+
+### Part 4B: Automated Pulumi IaC Deployment
+
+For DevOps engineers preferring Infrastructure-as-Code automation:
 
 1. **Navigate to the `infra` Directory:**
    ```bash
    cd infra
-   ```
-
-2. **Install Infrastructure Dependencies:**
-   ```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
 
-3. **Select or Create a Pulumi Stack:**
+2. **Configure & Deploy Stack:**
    ```bash
    pulumi stack init dev
-   ```
-
-4. **Set Configuration Variables:**
-   ```bash
    pulumi config set aws:region us-east-1
    pulumi config set kanga-route-infra:instanceType t3.micro
-   # Optional: set pre-baked AMI ID from Packer
    pulumi config set kanga-route-infra:amiId ami-0123456789abcdef0
-   ```
-
-5. **Deploy the Appliance Infrastructure:**
-   ```bash
    pulumi up
    ```
-   *Pulumi will output the assigned Elastic IP and EC2 Instance ID.*
 
 ---
 
-### Part 5: Production AWS Networking Requirements
+### Part 5: Mandatory Production AWS Networking (Port 25 & rDNS)
 
 > [!IMPORTANT]
 > Major email providers (Gmail, Outlook, Yahoo) enforce strict anti-spam requirements on mail servers connecting via Port 25. Complete these two mandatory AWS configuration steps prior to production verification:

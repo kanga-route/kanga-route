@@ -21,11 +21,29 @@
 
 ---
 
-## Phase 3: Deployment
-1. Use the provided Pulumi stack (or your preferred IaC) to deploy the Kanga-Route AMI to an EC2 instance (`t3.micro` or `t4g.micro`)
-2. Ensure the Security Group allows outbound TCP Port 25 (SMTP), Port 53 (DNS), and Port 443 (HTTPS)
-3. SSH into the newly provisioned instance
-4. Open `/opt/kanga-route/.env` and insert your HubSpot Private App Token
+## Phase 3: Deployment Options
+
+### Option A: AWS Web Console Deployment (No IaC Required)
+1. **Bake the AMI Image with Packer:**
+   ```bash
+   packer init packer/kanga-route.pkr.hcl
+   packer build packer/kanga-route.pkr.hcl
+   ```
+2. **Launch from AWS EC2 Console:**
+   * Open the AWS Console and navigate to **EC2 > AMIs > Owned by me**
+   * Select `Kanga-Route-Appliance` and click **Launch instance from AMI**
+   * Select instance type `t3.micro` or `t4g.micro`
+   * Select an SSH key pair
+   * Create a Security Group allowing SSH (Port 22) and outbound Port 25 (SMTP), Port 53 (DNS), Port 443 (HTTPS), and Port 80
+3. **Attach Elastic IP & Configure Token:**
+   * Associate your allocated Elastic IP with the new instance
+   * SSH into the instance: `ssh ubuntu@<ELASTIC_IP>`
+   * Edit `/opt/kanga-route/.env` and insert your `HUBSPOT_ACCESS_TOKEN`
+
+### Option B: Automated Pulumi IaC Deployment
+1. Navigate to `infra/` and run `pulumi stack init dev`
+2. Configure stack variables: `pulumi config set kanga-route-infra:amiId <YOUR_AMI_ID>`
+3. Run `pulumi up` to provision VPC, Subnet, Security Group, Elastic IP, and EC2 instance automatically.
 
 ---
 
