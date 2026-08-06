@@ -16,13 +16,13 @@
 
 ---
 
-## 🚀 Quick Launch (Pre-Built Public AMI)
+## 🚀 Appliance Release Registry & AMI Catalog
 
-Deploy the official Kanga-Route virtual appliance directly into your AWS account with a single click:
+Launch pre-built Kanga-Route virtual appliances directly into your AWS account:
 
-| AWS Region | AMI ID | Name | Visibility | Quick Launch |
+| Version | Release Status | AWS Region | AMI ID | Quick Launch |
 |---|---|---|---|---|
-| **`us-east-1`** (N. Virginia) | **`ami-0621206b8c7bfc85c`** | `Kanga-Route-Appliance` | **Public** | [**Launch Appliance in AWS Console 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-0621206b8c7bfc85c) |
+| **`v1.0.0`** | **Latest (Production)** | `us-east-1` (N. Virginia) | **`ami-0621206b8c7bfc85c`** | [**Launch v1.0.0 Appliance 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-0621206b8c7bfc85c) |
 
 > [!IMPORTANT]
 > **Prerequisites**: Configure 5 custom contact properties in HubSpot and submit the AWS Port 25 unblock request before running production verifications. See the complete [Setup & Operations Guide](docs/setup.md).
