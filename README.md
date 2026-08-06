@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kanga-route/kanga-route/master/banner.png" alt="Kanga-Route Banner" width="100%">
-</p>
+![Kanga-Route Banner](banner.png)
 
 # Kanga-Route 🦘
 
