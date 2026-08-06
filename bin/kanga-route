@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+# Kanga-Route Control Plane CLI Wrapper
+# Location: /usr/local/bin/kanga-route (baked into appliance host OS)
+
+set -e
+
+COMPOSE_DIR="${KANGA_ROUTE_DIR:-/opt/kanga-route}"
+
+usage() {
+    echo "Usage: kanga-route [command]"
+    echo ""
+    echo "Commands:"
+    echo "  run             Trigger an immediate one-off verification run"
+    echo "  status          Check status of DynamoDB cache and engine container stack"
+    echo "  logs            Tail Docker Compose logs"
+    echo "  schedule <cron> Update host OS cron schedule (e.g. kanga-route schedule \"0 2 * * *\")"
+    echo "  help            Show this help message"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    run)
+        echo "[kanga-route] Triggering container verification run..."
+        cd "$COMPOSE_DIR" && docker compose run --rm verifier-engine
+        ;;
+    status)
+        echo "[kanga-route] Checking container stack health..."
+        cd "$COMPOSE_DIR" && docker compose ps
+        echo ""
+        echo "[kanga-route] Current Cron Schedule:"
+        crontab -l 2>/dev/null | grep "kanga-route" || echo "No active cron schedule configured."
+        ;;
+    logs)
+        echo "[kanga-route] Tail container logs (Ctrl+C to stop)..."
+        cd "$COMPOSE_DIR" && docker compose logs -f --tail=100
+        ;;
+    schedule)
+        if [ $# -lt 1 ]; then
+            echo "Error: Missing cron expression."
+            echo "Example: kanga-route schedule \"0 2 * * *\""
+            exit 1
+        fi
+        CRON_EXPR="$1"
+        echo "[kanga-route] Updating cron schedule to: '$CRON_EXPR'..."
+        (crontab -l 2>/dev/null | grep -v "kanga-route run"; echo "$CRON_EXPR /usr/local/bin/kanga-route run >> /var/log/kanga-route.log 2>&1 # kanga-route run") | crontab -
+        echo "[kanga-route] Cron schedule updated successfully."
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        echo "Error: Unknown command '$COMMAND'"
+        usage
+        ;;
+esac
