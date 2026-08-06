@@ -142,6 +142,12 @@ policy = aws.iam.RolePolicy(
     ),
 )
 
+aws.iam.RolePolicyAttachment(
+    "kanga-route-ssm-policy-attachment",
+    role=role.name,
+    policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+)
+
 instance_profile = aws.iam.InstanceProfile(
     "kanga-route-instance-profile",
     role=role.name,
