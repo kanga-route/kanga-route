@@ -47,6 +47,7 @@ class VerificationResult(BaseModel):
     """Strict verification result contract."""
 
     email: str
+    contact_id: Optional[str] = None
     status: VerificationStatus
     reason: VerificationReason
     mailbox_provider: MailboxProvider = MailboxProvider.OTHER
