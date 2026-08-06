@@ -1,0 +1,27 @@
+name: Packer Appliance Bakery
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  packer-build:
+    name: Build Kanga-Route Appliance AMI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup HashiCorp Packer
+        uses: hashicorp/setup-packer@v2
+        with:
+          version: 'latest'
+
+      - name: Initialize Packer Plugins
+        run: packer init packer/kanga-route.pkr.hcl
+
+      - name: Validate Packer Template
+        run: packer validate packer/kanga-route.pkr.hcl
