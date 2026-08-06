@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Kanga-Route Setup & Operations Guide
+    url: https://github.com/kanga-route/kanga-route/blob/main/docs/setup.md
+    about: Please review the setup guide for common configuration, AWS Port 25 unblocking, and HubSpot issues before opening an issue.
