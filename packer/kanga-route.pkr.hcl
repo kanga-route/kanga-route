@@ -60,6 +60,7 @@ source "amazon-ebs" "ubuntu" {
   }
 
   ssh_username = "ubuntu"
+  ami_groups   = ["all"]
 
   tags = {
     Name        = "Kanga-Route-Appliance"
