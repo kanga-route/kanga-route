@@ -2,8 +2,18 @@
 
 set -euo pipefail
 
+echo "==> Waiting for cloud-init to complete..."
+sudo cloud-init status --wait || true
+
 echo "==> Updating package repository and installing Docker..."
-sudo apt-get update
+for i in {1..5}; do
+    if sudo apt-get update; then
+        break
+    fi
+    echo "apt-get update retry $i/5..."
+    sleep 5
+done
+
 sudo apt-get install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
@@ -19,7 +29,14 @@ echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-sudo apt-get update
+for i in {1..5}; do
+    if sudo apt-get update; then
+        break
+    fi
+    echo "apt-get update retry $i/5..."
+    sleep 5
+done
+
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 sudo usermod -aG docker ubuntu
@@ -41,7 +58,7 @@ sudo systemctl enable kanga-route.service
 echo "==> Pre-pulling DynamoDB Local sidecar and building engine..."
 cd /opt/kanga-route
 sudo docker compose pull dynamodb-local
-sudo docker compose build verifier-engine
+sudo docker compose build engine
 
 echo "==> Cleaning up build context artifacts..."
 sudo rm -rf /tmp/kanga-route

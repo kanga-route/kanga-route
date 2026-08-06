@@ -17,10 +17,23 @@ variable "ami_prefix" {
   default = "kanga-route-appliance"
 }
 
+variable "vpc_id" {
+  type    = string
+  default = ""
+}
+
+variable "subnet_id" {
+  type    = string
+  default = ""
+}
+
 source "amazon-ebs" "ubuntu" {
   ami_name      = "${var.ami_prefix}-v${formatdate("YYYYMMDDhhmm", timestamp())}"
   instance_type = "t3.micro"
   region        = var.aws_region
+  vpc_id                       = var.vpc_id != "" ? var.vpc_id : null
+  subnet_id                    = var.subnet_id != "" ? var.subnet_id : null
+  associate_public_ip_address  = true
 
   source_ami_filter {
     filters = {
@@ -33,6 +46,7 @@ source "amazon-ebs" "ubuntu" {
   }
 
   ssh_username = "ubuntu"
+  ami_users    = ["603773569022"]
 
   tags = {
     Name        = "Kanga-Route-Appliance"
