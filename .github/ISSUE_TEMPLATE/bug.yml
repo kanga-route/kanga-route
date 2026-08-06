@@ -1,0 +1,67 @@
+name: 🐛 Bug Report
+description: Report a bug, failed verification handshake, or deployment issue in Kanga-Route.
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please ensure you have checked the setup guide and verified outbound Port 25 connectivity prior to submitting.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug Summary
+      description: A clear and concise description of what the bug is.
+      placeholder: e.g., SMTP socket handshake times out repeatedly on Microsoft 365 domains when running in Docker Compose.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Execution Environment
+      description: Where are you running Kanga-Route?
+      options:
+        - Local Workstation (Docker Compose / Local DynamoDB)
+        - AWS EC2 Instance (AMI / Local DynamoDB)
+        - AWS EC2 Instance (AMI / Cloud DynamoDB)
+        - Custom VM / On-Premises Hypervisor
+        - Other (Specify in details)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: pre_checks
+    attributes:
+      label: Network & Service Prerequisites
+      description: Please confirm the state of your underlying network environment.
+      options:
+        - label: Outbound TCP Port 25 is confirmed unblocked on the host network/VPC.
+        - label: Reverse DNS (PTR) and matching A records are set up for the public IP.
+        - label: DynamoDB container / service is running and healthy (`kanga-route status`).
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this behavior?
+      placeholder: |
+        1. Run `kanga-route run`
+        2. Process contacts with domain @example.com
+        3. See error in logs...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs & Output
+      description: Paste relevant logs from `kanga-route logs` or Docker output. Please redact any personal email addresses or Private App tokens!
+      render: shell
+
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: Additional Context
+      description: Add any other context or screenshots about the problem here.
