@@ -1,7 +1,43 @@
+<p align="center">
+  <img src="banner.png" alt="Kanga-Route Banner" width="100%">
+</p>
+
 # Kanga-Route 🦘
+
+<p align="center">
+  <a href="https://github.com/kanga-route/kanga-route/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/docker-ready-2496ED.svg" alt="Docker"></a>
+  <a href="https://aws.amazon.com/"><img src="https://img.shields.io/badge/AWS-AMI%20Public-FF9900.svg" alt="AWS AMI"></a>
+  <a href="https://github.com/kanga-route/kanga-route/actions"><img src="https://img.shields.io/badge/tests-20%20passed-success.svg" alt="Tests"></a>
+</p>
 
 > **Zero SaaS fees. Zero hard bounces.**  
 > A containerized virtual appliance that routes HubSpot CRM contacts through a deep, 4-layer email verification engine and caches results in DynamoDB.
+
+---
+
+## 🚀 Quick Launch (Pre-Built Public AMI)
+
+Deploy the official Kanga-Route virtual appliance directly into your AWS account with a single click:
+
+| AWS Region | AMI ID | Name | Visibility | Quick Launch |
+|---|---|---|---|---|
+| **`us-east-1`** (N. Virginia) | **`ami-03b6c887a2e021920`** | `Kanga-Route-Appliance` | **Public** | [**Launch Appliance in AWS Console 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-03b6c887a2e021920) |
+
+---
+
+## 📚 Documentation Index
+
+| Guide | Description | Link |
+|---|---|---|
+| 📖 **Setup & Operations** | Step-by-step installation, HubSpot Private App setup, and deployment | [**docs/setup.md**](docs/setup.md) |
+| 📐 **Architecture** | System layout, container topology, and host VM control plane | [**docs/architecture.md**](docs/architecture.md) |
+| 🛡️ **Long-Term Use Advice** | IP reputation, rate limiting, log rotation, and DynamoDB scaling | [**docs/long-term-use.md**](docs/long-term-use.md) |
+| 🗺️ **Roadmap** | Multi-phase development milestones and feature releases | [**docs/roadmap.md**](docs/roadmap.md) |
+| 📋 **ADR 0001** | Containerized Virtual Appliance (Docker + Packer) | [**docs/adr/0001...**](docs/adr/0001-use-containerized-virtual-appliance.md) |
+| 📋 **ADR 0002** | Dual-Mode DynamoDB Caching Strategy | [**docs/adr/0002...**](docs/adr/0002-dual-mode-dynamodb-caching.md) |
+| 📋 **ADR 0003** | Granular CRM Intelligence Writebacks | [**docs/adr/0003...**](docs/adr/0003-hubspot-granular-writebacks.md) |
 
 ---
 
@@ -21,7 +57,7 @@
   - [Part 1: Local Setup \& Testing](#part-1-local-setup--testing)
   - [Part 2: Using the `kanga-route` Host CLI](#part-2-using-the-kanga-route-host-cli)
   - [Part 3: Baking the AMI Image with Packer](#part-3-baking-the-ami-image-with-packer)
-  - [Part 4A: AWS Console Deployment (No IaC / No Pulumi Required)](#part-4a-aws-console-deployment-no-iac--no-pulumi-required)
+  - [Part 4A: AWS Console Deployment (No IaC Required)](#part-4a-aws-console-deployment-no-iac-required)
   - [Part 4B: Automated Pulumi IaC Deployment](#part-4b-automated-pulumi-iac-deployment)
   - [Part 5: Mandatory Production AWS Networking (Port 25 \& rDNS)](#part-5-mandatory-production-aws-networking-port-25--rdns)
 - [Troubleshooting Guide](#troubleshooting-guide)
@@ -133,7 +169,7 @@ Before starting, ensure your local workstation or administrative environment has
 2. **Python** (v3.9 or higher)
 3. **Git**
 4. **AWS Account & Credentials** (with permissions to create AMIs, EC2 instances, and Elastic IPs)
-5. **HashiCorp Packer** (for baking the AMI)
+5. **HashiCorp Packer** (for baking custom AMIs)
 
 ---
 
@@ -243,49 +279,32 @@ To generate an AMI for your AWS account:
    ```bash
    packer build -var "aws_region=us-east-1" packer/kanga-route.pkr.hcl
    ```
-   *Packer will register the AMI in your AWS account and display the output:*
-   ```text
-   ==> Finds created AMI: ami-0123456789abcdef0 (Kanga-Route-Appliance)
-   ```
 
 ---
 
-### Part 4A: AWS Console Deployment (No IaC / No Pulumi Required)
+### Part 4A: AWS Console Deployment (No IaC Required)
 
 Engineers who are not familiar with Pulumi can easily deploy the appliance via the **AWS EC2 Web Console**:
 
-#### Step 1: Locate Your Baked AMI
-1. Open the [AWS Management Console](https://console.aws.amazon.com/ec2/) in region **`us-east-1`** and navigate to **EC2 > AMIs**.
-2. Change the dropdown filter from *Public images* to **Owned by me**.
-3. Select **`Kanga-Route-Appliance`** (AMI ID: **`ami-03b6c887a2e021920`**).
-
-| Region | AMI ID | Name | Architecture | Quick Launch Link |
-|---|---|---|---|---|
-| `us-east-1` | `ami-03b6c887a2e021920` | `Kanga-Route-Appliance` | x86_64 / amd64 | [Launch Instance in AWS Console 🚀](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-03b6c887a2e021920) |
-
-#### Step 2: Launch EC2 Instance
-1. Click the orange **Launch instance from AMI** button in the top right.
+#### Step 1: Launch Pre-Built AMI
+1. Click [**Launch Instance in AWS Console 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-03b6c887a2e021920) (or search for `ami-03b6c887a2e021920` in region `us-east-1`).
 2. **Name:** Enter `Kanga-Route-Appliance`.
-3. **Instance Type:** Select `t3.micro` or `t4g.micro` (low-cost, eligible for free tier).
-4. **Key Pair:** Select an existing SSH key pair (or create a new one to access the VM).
-5. **Network Settings (Security Group):**
-   - Click **Create Security Group**.
-   - Allow **SSH (Port 22)** from *My IP*.
-   - Ensure outbound traffic allows Port 25 (SMTP), Port 53 (DNS), Port 443 (HTTPS), and Port 80.
+3. **Instance Type:** Select `t3.micro` or `t4g.micro` (low-cost, free tier eligible).
+4. **Key Pair:** Select an SSH key pair.
+5. **Security Group:** Create or select a Security Group allowing SSH (Port 22) and outbound Port 25 (SMTP), Port 53 (DNS), Port 443 (HTTPS), and Port 80.
 6. Click **Launch Instance**.
 
-#### Step 3: Allocate and Associate Elastic IP (Static Public IP)
-1. In the EC2 Console sidebar, navigate to **Network & Security > Elastic IPs**.
-2. Click **Allocate Elastic IP address** and click **Allocate**.
-3. Select the newly created Elastic IP, click **Actions > Associate Elastic IP address**.
-4. Choose Instance `Kanga-Route-Appliance` and click **Associate**.
+#### Step 2: Attach Elastic IP (Static Public IP)
+1. Navigate to **EC2 Console > Network & Security > Elastic IPs**.
+2. Click **Allocate Elastic IP address**.
+3. Select the Elastic IP, click **Actions > Associate Elastic IP address**, and select your `Kanga-Route-Appliance` instance.
 
-#### Step 4: Insert Your HubSpot Token & Start Appliance
-1. Connect to your instance via SSH:
+#### Step 3: Insert Your HubSpot Token & Start Appliance
+1. Connect via SSH:
    ```bash
    ssh -i /path/to/your-key.pem ubuntu@<YOUR_ELASTIC_IP>
    ```
-2. Open the appliance environment file:
+2. Open `/opt/kanga-route/.env`:
    ```bash
    sudo nano /opt/kanga-route/.env
    ```
@@ -293,7 +312,7 @@ Engineers who are not familiar with Pulumi can easily deploy the appliance via t
    ```env
    HUBSPOT_ACCESS_TOKEN=pat-na1-your-actual-hubspot-token
    ```
-4. Run your first live verification sync using the built-in CLI:
+4. Trigger your first verification sync:
    ```bash
    kanga-route run
    ```
@@ -317,7 +336,7 @@ For DevOps engineers preferring Infrastructure-as-Code automation:
    pulumi stack init dev
    pulumi config set aws:region us-east-1
    pulumi config set kanga-route-infra:instanceType t3.micro
-   pulumi config set kanga-route-infra:amiId ami-0123456789abcdef0
+   pulumi config set kanga-route-infra:amiId ami-03b6c887a2e021920
    pulumi up
    ```
 
@@ -359,6 +378,7 @@ For DevOps engineers preferring Infrastructure-as-Code automation:
 
 ```text
 kanga-route/
+├── banner.png                     # Kanga-Route header banner
 ├── README.md                      # Primary documentation guide
 ├── Dockerfile                     # Python engine container image build
 ├── docker-compose.yml             # Local engine + dynamodb-local container stack
@@ -406,9 +426,10 @@ kanga-route/
 │   └── __main__.py
 │
 └── docs/                          # Architecture guides & ADR records
-    ├── architecture.md
-    ├── roadmap.md
-    ├── setup.md
+    ├── setup.md                   # Setup & installation guide
+    ├── architecture.md            # System architecture guide
+    ├── long-term-use.md           # Operational best practices & long-term advice
+    ├── roadmap.md                 # Development roadmap
     └── adr/
         ├── 0001-use-containerized-virtual-appliance.md
         ├── 0002-dual-mode-dynamodb-caching.md
