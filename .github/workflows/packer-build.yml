@@ -55,6 +55,14 @@ jobs:
           name: packer-candidate-manifest-${{ github.event.inputs.version_tag }}
           path: packer-manifest.json
 
+      - name: Prune Expired AMIs (AWS Cost Optimization)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          pip install boto3
+          python3 scripts/cleanup_old_amis.py us-east-1
+
       - name: Promote AMI ID to Production Documentation (Gated Step)
         if: github.event.inputs.promote_to_latest_stable == 'true'
         run: |
