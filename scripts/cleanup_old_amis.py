@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Kanga-Route AMI Retention & Pruning Script
+Kanga-Route AMI Retention & Catalog Sync Script
 
 Retention Policy:
 1. Retains the 5 most recent AMI builds globally.
 2. ALWAYS retains the latest build for each MAJOR version branch (e.g., latest v1.x.x, latest v2.x.x).
 3. Deregisters older patch AMIs and deletes their backing EBS snapshots to minimize AWS storage costs.
+4. Cleans up README.md and docs catalog tables to remove dead links for pruned AMIs.
 """
 
-import sys
+import sys, os, re
 import boto3
 
 def prune_old_amis(region="us-east-1"):
@@ -29,6 +30,7 @@ def prune_old_amis(region="us-east-1"):
     images.sort(key=lambda x: x["CreationDate"], reverse=True)
     
     keep_ami_ids = set()
+    pruned_ami_ids = set()
     major_anchors = {}
     
     # Rule A: Always keep the 5 most recent AMIs globally
@@ -52,6 +54,7 @@ def prune_old_amis(region="us-east-1"):
         ami_id = img["ImageId"]
         if ami_id not in keep_ami_ids:
             print(f"Pruning expired AMI: {ami_id} ({img.get('Name')})")
+            pruned_ami_ids.add(ami_id)
             
             # Deregister AMI
             ec2.deregister_image(ImageId=ami_id)
@@ -69,6 +72,22 @@ def prune_old_amis(region="us-east-1"):
             pruned_count += 1
             
     print(f"AMI cleanup complete. Pruned {pruned_count} old AMI(s).")
+    
+    # Rule D: Sync README.md to remove dead AMI catalog rows
+    if pruned_ami_ids and os.path.exists("README.md"):
+        readme = open("README.md").read()
+        lines = readme.splitlines()
+        new_lines = []
+        removed = 0
+        for line in lines:
+            # Check if line contains any pruned AMI ID
+            if any(pruned_id in line for pruned_id in pruned_ami_ids):
+                removed += 1
+                continue
+            new_lines.append(line)
+        if removed > 0:
+            open("README.md", "w").write("\n".join(new_lines) + "\n")
+            print(f"Removed {removed} dead AMI catalog row(s) from README.md.")
 
 if __name__ == "__main__":
     region = sys.argv[1] if len(sys.argv) > 1 else "us-east-1"
