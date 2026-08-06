@@ -1,0 +1,64 @@
+name: Auto-Version & Release Drafter
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'pyproject.toml'
+      - 'packer/kanga-route.pkr.hcl'
+      - 'README.md'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+
+jobs:
+  auto-version:
+    name: Determine Version & Tag Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version Bump
+        id: version
+        run: |
+          CURRENT_VER=$(python3 -c "import re; content=open('pyproject.toml').read(); print(re.search(r'version\s*=\s*\"([^\"]+)\"', content).group(1))")
+          echo "Current Version: $CURRENT_VER"
+          
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VER"
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          
+          if [[ "$COMMIT_MSG" == *"BREAKING CHANGE"* ]] || [[ "$COMMIT_MSG" == *"feat!"* ]]; then
+            NEW_MAJOR=$((MAJOR + 1))
+            NEW_VER="${NEW_MAJOR}.0.0"
+          elif [[ "$COMMIT_MSG" == *"feat"* ]]; then
+            NEW_MINOR=$((MINOR + 1))
+            NEW_VER="${MAJOR}.${NEW_MINOR}.0"
+          else
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VER="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+          
+          echo "Calculated version: $NEW_VER"
+          echo "new_version=$NEW_VER" >> $GITHUB_OUTPUT
+
+      - name: Update Version in Code & Create Tag
+        run: |
+          NEW_VER="${{ steps.version.outputs.new_version }}"
+          if [ -n "$NEW_VER" ]; then
+            python3 -c "
+          import re
+          for filepath in ['pyproject.toml', 'packer/kanga-route.pkr.hcl']:
+              content = open(filepath).read()
+              new_content = re.sub(r'(version\s*=\s*\")[^\"]+(\")', r'\g<1>' + '$NEW_VER' + r'\g<2>', new_content, flags=re.IGNORECASE)
+              open(filepath, 'w').write(new_content)
+          "
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add pyproject.toml packer/kanga-route.pkr.hcl
+            git diff --staged --quiet || (git commit -m "chore(release): bump version to v${NEW_VER}" && git tag "v${NEW_VER}" && git push origin master --tags || true)
+          fi
