@@ -61,6 +61,7 @@ For detailed step-by-step installation guides, architecture specifications, and 
 
 | Guide | Description | Link |
 |---|---|---|
+| 📜 **Changelog** | Version history, release milestones, and feature updates | [**CHANGELOG.md**](CHANGELOG.md) |
 | 📖 **Setup & Operations Guide** | Step-by-step HubSpot setup, DNS records (A, PTR, SPF), AWS Console / Pulumi deployment, and connection methods | [**docs/setup.md**](docs/setup.md) |
 | 🎯 **HubSpot User Story & Sales Workflow** | Deliverability protection, sequence un-enrollment workflows, and sales analytics | [**docs/hubspot-user-story.md**](docs/hubspot-user-story.md) |
 | 📐 **Architecture Overview** | System layout, topology diagram, container stack, and host control plane | [**docs/architecture.md**](docs/architecture.md) |
