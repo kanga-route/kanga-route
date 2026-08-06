@@ -7,8 +7,8 @@ on:
         description: 'Version Tag / Release (e.g., v1.0.0)'
         required: true
         default: 'v1.0.0'
-      promote_to_readme:
-        description: 'Promote newly baked AMI ID as Latest in README.md'
+      promote_to_latest_stable:
+        description: 'Promote newly baked AMI ID as Latest Stable/Validated in documentation'
         required: true
         type: boolean
         default: false
@@ -56,7 +56,7 @@ jobs:
           path: packer-manifest.json
 
       - name: Promote AMI ID to Production Documentation (Gated Step)
-        if: github.event.inputs.promote_to_readme == 'true'
+        if: github.event.inputs.promote_to_latest_stable == 'true'
         run: |
           if [ -f packer-manifest.json ]; then
             NEW_AMI=$(python3 -c "import json; data=json.load(open('packer-manifest.json')); print(data['builds'][-1]['artifact_id'].split(':')[-1])")
