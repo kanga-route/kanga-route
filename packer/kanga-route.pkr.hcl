@@ -33,6 +33,14 @@ source "amazon-ebs" "ubuntu" {
   }
 
   ssh_username = "ubuntu"
+
+  tags = {
+    Name        = "Kanga-Route-Appliance"
+    Application = "Kanga-Route"
+    Version     = "0.1.0"
+    Description = "Containerized Virtual Appliance for HubSpot email verification"
+    ManagedBy   = "Packer"
+  }
 }
 
 build {
