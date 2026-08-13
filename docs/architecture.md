@@ -32,6 +32,21 @@ A global asynchronous semaphore caps concurrent probes across different
 customer domains. Unknown results are written back for visibility but not
 cached. Definitive results use DynamoDB TTL.
 
+## Product-neutral result contract
+
+The verifier emits a JSON-compatible object through
+`VerificationResult.to_dict()`. Its stable fields are `email`, `contact_id`,
+`status`, `reason`, `mailbox_provider`, `is_role_account`, `mx_records`,
+`smtp_code`, and `verified_at`. Enum fields use their documented string values,
+`verified_at` remains an ISO-8601 string, and optional fields are represented as
+JSON `null`.
+
+Integration adapters own all product-specific formatting. For example, the
+HubSpot adapter maps the neutral status and reason to custom property names,
+renders booleans as lowercase strings, and converts `verified_at` to Unix epoch
+milliseconds. This keeps the verification engine reusable by future CRM,
+spreadsheet, webhook, and file adapters.
+
 ## Host control plane
 
 Packer installs Docker, an allowlisted application payload, three systemd

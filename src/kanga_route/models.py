@@ -1,7 +1,4 @@
-"""Domain models and enums for Kanga-Route verification and CRM writebacks.
-
-Refers to ADR 0003: Granular CRM Intelligence Writebacks.
-"""
+"""Product-neutral domain models and enums for Kanga-Route verification."""
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -10,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class VerificationStatus(str, Enum):
-    """Granular verification status for CRM update."""
+    """Granular email verification status."""
 
     VALID = "Valid"
     INVALID = "Invalid"
@@ -62,32 +59,9 @@ class VerificationResult(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
-    def to_hubspot_properties(self) -> dict:
-        """Converts result into HubSpot custom property payload."""
-        # HubSpot datetime properties accept Unix epoch milliseconds, while the
-        # domain model deliberately retains a readable ISO-8601 timestamp.
-        iso_timestamp = self.verified_at
-        if iso_timestamp.endswith(("Z", "z")):
-            iso_timestamp = f"{iso_timestamp[:-1]}+00:00"
-        parsed_timestamp = datetime.fromisoformat(iso_timestamp)
-        if parsed_timestamp.tzinfo is None:
-            parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
-        parsed_timestamp = parsed_timestamp.astimezone(timezone.utc)
-        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
-        elapsed = parsed_timestamp - epoch
-        epoch_milliseconds = (
-            elapsed.days * 86_400_000
-            + elapsed.seconds * 1_000
-            + elapsed.microseconds // 1_000
-        )
-
-        return {
-            "email_verification_status": self.status.value,
-            "email_verification_reason": self.reason.value,
-            "mailbox_provider": self.mailbox_provider.value,
-            "is_role_account": str(self.is_role_account).lower(),
-            "last_verified": str(epoch_milliseconds),
-        }
+    def to_dict(self) -> dict:
+        """Return the product-neutral JSON-compatible result representation."""
+        return self.model_dump(mode="json")
 
 
 class HubSpotContact(BaseModel):
