@@ -21,6 +21,32 @@ class HubSpotError(RuntimeError):
     """Raised when HubSpot cannot complete a required CRM operation."""
 
 
+def format_verification_properties(result: VerificationResult) -> Dict[str, str]:
+    """Format a product-neutral verification result for HubSpot writeback."""
+    iso_timestamp = result.verified_at
+    if iso_timestamp.endswith(("Z", "z")):
+        iso_timestamp = f"{iso_timestamp[:-1]}+00:00"
+    parsed_timestamp = datetime.fromisoformat(iso_timestamp)
+    if parsed_timestamp.tzinfo is None:
+        parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
+    parsed_timestamp = parsed_timestamp.astimezone(timezone.utc)
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    elapsed = parsed_timestamp - epoch
+    epoch_milliseconds = (
+        elapsed.days * 86_400_000
+        + elapsed.seconds * 1_000
+        + elapsed.microseconds // 1_000
+    )
+
+    return {
+        "email_verification_status": result.status.value,
+        "email_verification_reason": result.reason.value,
+        "mailbox_provider": result.mailbox_provider.value,
+        "is_role_account": str(result.is_role_account).lower(),
+        "last_verified": str(epoch_milliseconds),
+    }
+
+
 class HubSpotClient(ICRMClient):
     """Client for interacting with HubSpot Contacts API v3."""
 
@@ -266,7 +292,7 @@ class HubSpotClient(ICRMClient):
                 inputs.append(
                     {
                         "id": result.contact_id,
-                        "properties": result.to_hubspot_properties(),
+                        "properties": format_verification_properties(result),
                     }
                 )
 

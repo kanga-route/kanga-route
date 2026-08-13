@@ -27,7 +27,7 @@ from kanga_route.engine.verifier import (
 )
 
 
-def test_verification_result_to_hubspot_properties():
+def test_verification_result_to_dict_is_json_compatible():
     result = VerificationResult(
         email="admin@company.com",
         status=VerificationStatus.VALID,
@@ -37,24 +37,18 @@ def test_verification_result_to_hubspot_properties():
         mx_records=["aspmx.l.google.com"],
         verified_at="2026-08-06T00:00:00Z",
     )
-    props = result.to_hubspot_properties()
-    assert props["email_verification_status"] == "Valid"
-    assert props["email_verification_reason"] == "OK"
-    assert props["mailbox_provider"] == "Google Workspace"
-    assert props["is_role_account"] == "true"
-    assert props["last_verified"] == "1785974400000"
 
-
-def test_hubspot_timestamp_uses_epoch_milliseconds_without_mutating_model():
-    result = VerificationResult(
-        email="user@company.com",
-        status=VerificationStatus.VALID,
-        reason=VerificationReason.OK,
-        verified_at="1970-01-01T00:00:01.234Z",
-    )
-
-    assert result.to_hubspot_properties()["last_verified"] == "1234"
-    assert result.verified_at == "1970-01-01T00:00:01.234Z"
+    assert result.to_dict() == {
+        "email": "admin@company.com",
+        "contact_id": None,
+        "status": "Valid",
+        "reason": "OK",
+        "mailbox_provider": "Google Workspace",
+        "is_role_account": True,
+        "mx_records": ["aspmx.l.google.com"],
+        "smtp_code": None,
+        "verified_at": "2026-08-06T00:00:00Z",
+    }
 
 
 def test_syntax_stage_invalid():

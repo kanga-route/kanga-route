@@ -5,8 +5,13 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from kanga_route.crm.hubspot import HubSpotClient, HubSpotError
+from kanga_route.crm.hubspot import (
+    HubSpotClient,
+    HubSpotError,
+    format_verification_properties,
+)
 from kanga_route.models import (
+    MailboxProvider,
     VerificationReason,
     VerificationResult,
     VerificationStatus,
@@ -197,6 +202,38 @@ def test_hubspot_batch_update_verification_results():
     payload = session.post.call_args.kwargs["json"]
     assert payload["inputs"][0]["id"] == "101"
     assert payload["inputs"][0]["properties"]["email_verification_status"] == "Valid"
+
+
+def test_hubspot_formats_verification_properties():
+    result = VerificationResult(
+        email="admin@company.com",
+        status=VerificationStatus.VALID,
+        reason=VerificationReason.OK,
+        mailbox_provider=MailboxProvider.GOOGLE_WORKSPACE,
+        is_role_account=True,
+        mx_records=["aspmx.l.google.com"],
+        verified_at="2026-08-06T00:00:00Z",
+    )
+
+    assert format_verification_properties(result) == {
+        "email_verification_status": "Valid",
+        "email_verification_reason": "OK",
+        "mailbox_provider": "Google Workspace",
+        "is_role_account": "true",
+        "last_verified": "1785974400000",
+    }
+
+
+def test_hubspot_timestamp_uses_epoch_milliseconds_without_mutating_model():
+    result = VerificationResult(
+        email="user@company.com",
+        status=VerificationStatus.VALID,
+        reason=VerificationReason.OK,
+        verified_at="1970-01-01T00:00:01.234Z",
+    )
+
+    assert format_verification_properties(result)["last_verified"] == "1234"
+    assert result.verified_at == "1970-01-01T00:00:01.234Z"
 
 
 def test_hubspot_batch_update_requires_contact_id():
