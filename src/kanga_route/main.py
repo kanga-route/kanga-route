@@ -11,7 +11,7 @@ from kanga_route.cache.dynamodb import CacheError, DynamoDBCacheStore
 from kanga_route.contracts import ICacheStore, ICRMClient, IVerificationPipeline
 from kanga_route.crm.hubspot import HubSpotClient, HubSpotError
 from kanga_route.engine.verifier import AsyncVerificationEngine, VerificationEngine
-from kanga_route.models import VerificationResult, VerificationStatus
+from kanga_route.models import VerificationOutcome, VerificationStatus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -114,7 +114,7 @@ def run_pipeline(
         return 0
 
     logger.info("Retrieved %s contact(s) to evaluate.", len(contacts))
-    results: List[VerificationResult] = []
+    outcomes: List[VerificationOutcome] = []
     contacts_to_verify = []
     cache_hits = 0
 
@@ -131,8 +131,9 @@ def run_pipeline(
             and cached_result.status != VerificationStatus.UNKNOWN
         ):
             cache_hits += 1
-            cached_result.contact_id = contact.id
-            results.append(cached_result)
+            outcomes.append(
+                VerificationOutcome(target=contact, result=cached_result)
+            )
         else:
             contacts_to_verify.append(contact)
 
@@ -147,7 +148,6 @@ def run_pipeline(
             raise PipelineError("Verification engine returned an incomplete batch")
 
         for contact, result in zip(contacts_to_verify, verified_results):
-            result.contact_id = contact.id
             if result.status != VerificationStatus.UNKNOWN:
                 try:
                     cached = cache_store.put(result)
@@ -159,7 +159,7 @@ def run_pipeline(
                     raise PipelineError(
                         f"Cache rejected result for {result.email}"
                     )
-            results.append(result)
+            outcomes.append(VerificationOutcome(target=contact, result=result))
 
     logger.info(
         "Evaluation complete. Cache hits: %s, engine verifications: %s.",
@@ -167,16 +167,16 @@ def run_pipeline(
         len(contacts_to_verify),
     )
 
-    if results:
+    if outcomes:
         try:
-            success = crm_client.batch_update_verification_results(results)
+            success = crm_client.batch_update_verification_results(outcomes)
         except Exception as exc:
             raise PipelineError("HubSpot batch writeback failed") from exc
         if not success:
             raise PipelineError("HubSpot batch writeback was incomplete")
-        logger.info("Successfully updated %s contact(s) in HubSpot.", len(results))
+        logger.info("Successfully updated %s contact(s) in HubSpot.", len(outcomes))
 
-    return len(results)
+    return len(outcomes)
 
 
 def _positive_batch_size(value: str) -> int:

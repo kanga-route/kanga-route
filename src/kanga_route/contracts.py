@@ -5,7 +5,11 @@ Enforces clear boundaries between Verification Engine, DynamoDB Cache, and HubSp
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from kanga_route.models import VerificationResult, HubSpotContact
+from kanga_route.models import (
+    VerificationOutcome,
+    VerificationResult,
+    VerificationTarget,
+)
 
 
 class IVerificationStage(ABC):
@@ -46,13 +50,15 @@ class ICRMClient(ABC):
     """Abstract interface for CRM operations (HubSpot)."""
 
     @abstractmethod
-    def fetch_unverified_contacts(self, limit: int = 100) -> List[HubSpotContact]:
+    def fetch_unverified_contacts(
+        self, limit: int = 100
+    ) -> List[VerificationTarget]:
         """Fetches batch of contacts requiring verification."""
         pass
 
     @abstractmethod
     def batch_update_verification_results(
-        self, results: List[VerificationResult]
+        self, outcomes: List[VerificationOutcome]
     ) -> bool:
         """Batch updates contact verification properties in the CRM."""
         pass

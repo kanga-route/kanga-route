@@ -15,7 +15,6 @@ from kanga_route.models import (
     VerificationStatus,
     VerificationReason,
     MailboxProvider,
-    HubSpotContact,
 )
 from kanga_route.engine.verifier import (
     SyntaxAndRoleStage,
@@ -40,7 +39,6 @@ def test_verification_result_to_dict_is_json_compatible():
 
     assert result.to_dict() == {
         "email": "admin@company.com",
-        "contact_id": None,
         "status": "Valid",
         "reason": "OK",
         "mailbox_provider": "Google Workspace",

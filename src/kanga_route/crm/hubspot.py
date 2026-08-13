@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from kanga_route.contracts import ICRMClient
-from kanga_route.models import HubSpotContact, VerificationResult
+from kanga_route.models import (
+    VerificationOutcome,
+    VerificationResult,
+    VerificationTarget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +214,9 @@ class HubSpotClient(ICRMClient):
 
         return groups
 
-    def fetch_unverified_contacts(self, limit: int = 100) -> List[HubSpotContact]:
+    def fetch_unverified_contacts(
+        self, limit: int = 100
+    ) -> List[VerificationTarget]:
         """Fetch new, retryable, and stale contacts, following search paging."""
         self._require_token()
         if limit <= 0:
@@ -225,7 +231,7 @@ class HubSpotClient(ICRMClient):
                 "last_verified",
             ],
         }
-        contacts: List[HubSpotContact] = []
+        contacts: List[VerificationTarget] = []
         seen_contact_ids = set()
         after: Optional[str] = None
 
@@ -254,10 +260,10 @@ class HubSpotClient(ICRMClient):
                 if contact_id and email and contact_id not in seen_contact_ids:
                     seen_contact_ids.add(contact_id)
                     contacts.append(
-                        HubSpotContact(
-                            id=contact_id,
+                        VerificationTarget(
+                            record_id=contact_id,
                             email=email,
-                            properties=properties,
+                            metadata=properties,
                         )
                     )
                     if len(contacts) >= limit:
@@ -271,28 +277,31 @@ class HubSpotClient(ICRMClient):
         return contacts
 
     def batch_update_verification_results(
-        self, results: List[VerificationResult]
+        self, outcomes: List[VerificationOutcome]
     ) -> bool:
         """Batch update contact verification properties (max 100 per call)."""
         self._require_token()
-        if not results:
+        if not outcomes:
             return True
 
         batch_url = f"{self.BASE_URL}/batch/update"
         chunk_size = 100
 
-        for index in range(0, len(results), chunk_size):
-            chunk = results[index : index + chunk_size]
+        for index in range(0, len(outcomes), chunk_size):
+            chunk = outcomes[index : index + chunk_size]
             inputs = []
-            for result in chunk:
-                if not result.contact_id:
+            for outcome in chunk:
+                if not outcome.target.record_id:
                     raise HubSpotError(
-                        f"Cannot update {result.email}: HubSpot contact_id is missing"
+                        f"Cannot update {outcome.result.email}: "
+                        "HubSpot record ID is missing"
                     )
                 inputs.append(
                     {
-                        "id": result.contact_id,
-                        "properties": format_verification_properties(result),
+                        "id": outcome.target.record_id,
+                        "properties": format_verification_properties(
+                            outcome.result
+                        ),
                     }
                 )
 

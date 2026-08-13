@@ -35,11 +35,16 @@ cached. Definitive results use DynamoDB TTL.
 ## Product-neutral result contract
 
 The verifier emits a JSON-compatible object through
-`VerificationResult.to_dict()`. Its stable fields are `email`, `contact_id`,
-`status`, `reason`, `mailbox_provider`, `is_role_account`, `mx_records`,
-`smtp_code`, and `verified_at`. Enum fields use their documented string values,
+`VerificationResult.to_dict()`. Its stable fields are `email`, `status`,
+`reason`, `mailbox_provider`, `is_role_account`, `mx_records`, `smtp_code`, and
+`verified_at`. Enum fields use their documented string values,
 `verified_at` remains an ISO-8601 string, and optional fields are represented as
 JSON `null`.
+
+`VerificationTarget` carries an adapter-owned `record_id`, an email address, and
+optional metadata. `VerificationOutcome` associates a target with its result at
+the orchestration boundary and rejects mismatched email addresses. External
+record identity is never embedded in verification evidence or cache entries.
 
 Integration adapters own all product-specific formatting. For example, the
 HubSpot adapter maps the neutral status and reason to custom property names,
