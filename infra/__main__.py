@@ -1,12 +1,36 @@
-"""Pulumi IaC script provisioning Kanga-Route virtual appliance on AWS EC2."""
+"""Pulumi IaC script provisioning the Kanga-Route AWS appliance."""
 
 import json
+
 import pulumi
 import pulumi_aws as aws
 
+from config import (
+    build_dynamodb_policy_document,
+    build_dynamodb_table_arn,
+    validate_ami_id,
+    validate_dynamodb_table_name,
+    validate_ssh_cidr,
+)
+
+
 config = pulumi.Config()
 instance_type = config.get("instanceType") or "t3.micro"
-ami_id = config.get("amiId")
+ami_id = validate_ami_id(config.require("amiId"))
+ssh_cidr = validate_ssh_cidr(config.get("sshCidr"))
+dynamodb_table_name = validate_dynamodb_table_name(
+    config.get("dynamodbTableName") or "KangaRouteCache"
+)
+
+aws_partition = aws.get_partition().partition
+aws_region = aws.get_region().name
+aws_account_id = aws.get_caller_identity().account_id
+dynamodb_table_arn = build_dynamodb_table_arn(
+    partition=aws_partition,
+    region=aws_region,
+    account_id=aws_account_id,
+    table_name=dynamodb_table_name,
+)
 
 # 1. Create VPC & Networking Subsystem
 vpc = aws.ec2.Vpc(
@@ -49,20 +73,24 @@ aws.ec2.RouteTableAssociation(
     route_table_id=route_table.id,
 )
 
-# 2. Security Group (Outbound Port 25, 53, 443, 80)
+# 2. Security Group (no ingress by default; optional restricted SSH)
+ssh_ingress = []
+if ssh_cidr:
+    ssh_ingress.append(
+        aws.ec2.SecurityGroupIngressArgs(
+            description="Restricted SSH access",
+            from_port=22,
+            to_port=22,
+            protocol="tcp",
+            cidr_blocks=[ssh_cidr],
+        )
+    )
+
 security_group = aws.ec2.SecurityGroup(
     "kanga-route-sg",
     vpc_id=vpc.id,
     description="Security group for Kanga-Route verification appliance",
-    ingress=[
-        aws.ec2.SecurityGroupIngressArgs(
-            description="SSH access",
-            from_port=22,
-            to_port=22,
-            protocol="tcp",
-            cidr_blocks=["0.0.0.0/0"],
-        )
-    ],
+    ingress=ssh_ingress,
     egress=[
         aws.ec2.SecurityGroupEgressArgs(
             description="Outbound SMTP for email verification",
@@ -123,23 +151,7 @@ role = aws.iam.Role(
 policy = aws.iam.RolePolicy(
     "kanga-route-dynamodb-policy",
     role=role.id,
-    policy=json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "dynamodb:GetItem",
-                        "dynamodb:PutItem",
-                        "dynamodb:CreateTable",
-                        "dynamodb:DescribeTable",
-                    ],
-                    "Resource": "*",
-                }
-            ],
-        }
-    ),
+    policy=json.dumps(build_dynamodb_policy_document(dynamodb_table_arn)),
 )
 
 aws.iam.RolePolicyAttachment(
@@ -153,21 +165,7 @@ instance_profile = aws.iam.InstanceProfile(
     role=role.name,
 )
 
-# 4. Lookup AMI if not supplied
-if not ami_id:
-    ubuntu_ami = aws.ec2.get_ami(
-        most_recent=True,
-        owners=["099720109477"],
-        filters=[
-            aws.ec2.GetAmiFilterArgs(
-                name="name",
-                values=["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"],
-            )
-        ],
-    )
-    ami_id = ubuntu_ami.id
-
-# 5. EC2 Instance Provisioning
+# 4. EC2 Instance Provisioning
 appliance_instance = aws.ec2.Instance(
     "kanga-route-appliance",
     instance_type=instance_type,
@@ -175,10 +173,23 @@ appliance_instance = aws.ec2.Instance(
     subnet_id=subnet.id,
     vpc_security_group_ids=[security_group.id],
     iam_instance_profile=instance_profile.name,
-    tags={"Name": "Kanga-Route-Appliance"},
+    metadata_options=aws.ec2.InstanceMetadataOptionsArgs(
+        http_endpoint="enabled",
+        http_put_response_hop_limit=2,
+        http_tokens="required",
+    ),
+    root_block_device=aws.ec2.InstanceRootBlockDeviceArgs(
+        delete_on_termination=True,
+        encrypted=True,
+        volume_type="gp3",
+    ),
+    tags={
+        "Name": "Kanga-Route-Appliance",
+        "Application": "Kanga-Route",
+    },
 )
 
-# 6. Elastic IP (EIP) Allocation & Association
+# 5. Elastic IP (EIP) Allocation & Association
 eip = aws.ec2.Eip(
     "kanga-route-eip",
     instance=appliance_instance.id,
@@ -190,3 +201,4 @@ eip = aws.ec2.Eip(
 pulumi.export("public_ip", eip.public_ip)
 pulumi.export("instance_id", appliance_instance.id)
 pulumi.export("vpc_id", vpc.id)
+pulumi.export("dynamodb_table_name", dynamodb_table_name)

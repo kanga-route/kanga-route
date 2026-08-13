@@ -3,6 +3,7 @@
 # =========================
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials.json
@@ -44,6 +45,7 @@ env/
 # =========================
 # Packer
 packer_cache/
+packer-manifest.json
 *.box
 crash.log
 

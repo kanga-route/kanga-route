@@ -2,60 +2,54 @@ name: Packer Appliance Bakery
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    inputs:
+      aws_region:
+        description: AWS region in which to build the AMI
+        required: true
+        default: us-east-1
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packer-appliance-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   packer-build:
-    name: Build Kanga-Route Appliance AMI
+    name: Build Kanga-Route appliance AMI
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup HashiCorp Packer
+      - name: Set up Packer
         uses: hashicorp/setup-packer@v2
         with:
-          version: 'latest'
+          version: "latest"
 
-      - name: Initialize Packer Plugins
+      - name: Initialize Packer plugins
         run: packer init packer/kanga-route.pkr.hcl
 
-      - name: Validate Packer Template
+      - name: Validate Packer template
         run: packer validate packer/kanga-route.pkr.hcl
 
-      - name: Build AMI Image
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+      - name: Build AMI
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          BUILD_REGION: ${{ inputs.aws_region }}
         run: |
           packer build \
-            -var "aws_region=us-east-1" \
-            -var "aws_access_key=${AWS_ACCESS_KEY_ID}" \
-            -var "aws_secret_key=${AWS_SECRET_ACCESS_KEY}" \
+            -var "aws_region=${BUILD_REGION}" \
             packer/kanga-route.pkr.hcl
 
-      - name: Auto-Update README.md with New AMI ID
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
-        run: |
-          if [ -f packer-manifest.json ]; then
-            NEW_AMI=$(python3 -c "import json; data=json.load(open('packer-manifest.json')); print(data['builds'][-1]['artifact_id'].split(':')[-1])")
-            echo "Extracted new AMI ID: $NEW_AMI"
-            
-            if [ -n "$NEW_AMI" ] && [[ "$NEW_AMI" =~ ^ami- ]]; then
-              # Replace old AMI IDs in README.md and setup.md
-              sed -i -E "s/ami-[a-z0-9]+/$NEW_AMI/g" README.md docs/setup.md
-              
-              git config --global user.name "github-actions[bot]"
-              git config --global user.email "github-actions[bot]@users.noreply.github.com"
-              git add README.md docs/setup.md
-              git diff --staged --quiet || git commit -m "docs: auto-update AMI ID to $NEW_AMI from Packer build"
-              git push origin master || true
-            fi
-          fi
+      - name: Upload candidate manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: kanga-route-packer-manifest-${{ github.run_id }}
+          path: packer-manifest.json
+          if-no-files-found: error
+          retention-days: 14

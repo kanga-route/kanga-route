@@ -1,37 +1,39 @@
-# HubSpot User Story & Sales Workflow 🎯
+# HubSpot User Story and Sales Workflow
 
-This guide explains how Kanga-Route protects domain reputation, automates HubSpot CRM workflows, and provides accurate sales analytics for non-technical users and RevOps teams.
+Kanga-Route is a self-hosted verification appliance for RevOps teams. It
+classifies HubSpot contact email addresses before sales outreach and writes the
+evidence back to five contact properties.
 
----
+## What Kanga-Route automates
 
-## 1. Protecting Domain Reputation & Preventing Account Suspensions
+On each scheduled run it:
 
-Sales reps rely heavily on connected inboxes and domain reputation to ensure outreach emails land in a prospect's primary inbox rather than the spam folder. 
+1. fetches new, retryable, and stale contacts;
+2. checks syntax, role accounts, disposable providers, DNS/MX, SMTP recipients,
+   and catch-all behavior;
+3. caches only definitive outcomes; and
+4. writes status, reason, provider, role-account flag, and verification time
+   back to the matching HubSpot contact.
 
-HubSpot enforces a strict deliverability protection threshold: **if an account hits a hard bounce rate of just 5%, email sending privileges can be suspended entirely**. 
+Transient network and policy failures remain `Unknown`; they are never
+promoted to `Invalid` without authoritative evidence.
 
-By catching invalid domains and dead MX records before an email is ever dispatched, Kanga-Route protects your company's sender score, prevents account suspensions, and keeps outreach operational.
+## What the HubSpot administrator configures
 
----
+Kanga-Route supplies the properties, not the business workflow. A HubSpot
+administrator can create workflows such as:
 
-## 2. Automated Sequence Un-enrollment via Granular Writebacks
-
-Because Kanga-Route writes rich intelligence back to custom HubSpot contact properties (`email_verification_status`, `email_verification_reason`, `mailbox_provider`), RevOps teams can build powerful automated workflows:
-
-- **Automatic Sequence Removal**: When a contact is flagged as `Disposable` or `Catch-All`, HubSpot automatically un-enrolls the contact from active Sales Sequences.
-- **Task Assignment**: Automatically creates a task for the sales rep to find an updated, verified point of contact.
+- un-enroll contacts when status is `Invalid`;
+- route `Catch-All` contacts for manual review;
+- retry or review `Unknown` contacts rather than suppressing them; and
+- assign a task to find a replacement address.
 
 ```mermaid
 graph LR
-    Engine[Kanga-Route Engine] -->|Writeback: Invalid / Disposable| HS[HubSpot Contact]
-    HS -->|Trigger Workflow| Unenroll[Un-enroll from Sales Sequence]
-    HS -->|Trigger Workflow| Task[Assign Task to Sales Rep]
+    Engine["Kanga-Route"] -->|"Write five properties"| Contact["HubSpot contact"]
+    Contact -->|"Customer-configured workflow"| Review["Review or un-enroll"]
+    Contact -->|"Customer-configured workflow"| Task["Assign follow-up task"]
 ```
 
----
-
-## 3. Cleaner Analytics and Higher Engagement Metrics
-
-Email deliverability functions as a continuous feedback loop. Spam complaints and high bounce rates damage a domain's sending reputation over time. 
-
-By ensuring outreach only targets verified, valid addresses, sales reps see artificially inflated bounce metrics disappear. This leads to accurate open and click-through rates, allowing the team to measure what outreach content actually resonates with prospects.
+Keeping that responsibility in HubSpot lets each sales organization choose its
+own risk policy while Kanga-Route remains a focused verifier.

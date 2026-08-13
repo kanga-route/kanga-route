@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Kanga-Route verification daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=5m
+Unit=kanga-route-run.service
+
+[Install]
+WantedBy=timers.target

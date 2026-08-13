@@ -3,26 +3,72 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kanga-route-engine
-    env_file:
-      - .env
+    init: true
     environment:
-      - USE_LOCAL_DB=true
-      - DYNAMODB_ENDPOINT_URL=${DYNAMODB_ENDPOINT_URL:-http://dynamodb-local:8000}
-      - DYNAMODB_TABLE_NAME=${DYNAMODB_TABLE_NAME:-KangaRouteCache}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy}
+      HUBSPOT_ACCESS_TOKEN: "${HUBSPOT_ACCESS_TOKEN:-}"
+      BATCH_SIZE: "${BATCH_SIZE:-100}"
+      REVERIFY_AFTER_DAYS: "${REVERIFY_AFTER_DAYS:-30}"
+      UNKNOWN_RETRY_AFTER_HOURS: "${UNKNOWN_RETRY_AFTER_HOURS:-48}"
+      CACHE_TTL_DAYS: "${CACHE_TTL_DAYS:-30}"
+      SMTP_HELO_DOMAIN: "${SMTP_HELO_DOMAIN:-verifier.example.invalid}"
+      SMTP_MAIL_FROM: "${SMTP_MAIL_FROM:-verify@example.invalid}"
+      USE_LOCAL_DB: "${USE_LOCAL_DB:-true}"
+      DYNAMODB_ENDPOINT_URL: "${DYNAMODB_ENDPOINT_URL:-}"
+      DYNAMODB_TABLE_NAME: "${DYNAMODB_TABLE_NAME:-KangaRouteCache}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+    # Do not forward host AWS credentials into the container. DynamoDB Local
+    # gets non-secret signing values below; cloud mode uses the SDK's IAM chain.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        case "$${USE_LOCAL_DB}" in
+          true)
+            if [ -z "$${DYNAMODB_ENDPOINT_URL}" ]; then
+              export DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+            fi
+            export AWS_ACCESS_KEY_ID=fakeMyKeyId
+            export AWS_SECRET_ACCESS_KEY=fakeSecretAccessKey
+            unset AWS_SESSION_TOKEN
+            ;;
+          false)
+            ;;
+          *)
+            echo "Error: USE_LOCAL_DB must be either 'true' or 'false'." >&2
+            exit 64
+            ;;
+        esac
+        exec "$$@"
+      - --
+    command: ["python", "-m", "kanga_route.main"]
     depends_on:
       dynamodb-local:
         condition: service_started
 
+  dynamodb-local-init:
+    image: amazon/dynamodb-local:latest
+    user: "0:0"
+    entrypoint: ["/usr/bin/chown", "-R", "dynamodblocal:dynamodblocal", "/data"]
+    command: []
+    restart: "no"
+    volumes:
+      - dynamodb-data:/data
+
   dynamodb-local:
     image: amazon/dynamodb-local:latest
-    container_name: kanga-route-dynamodb
+    depends_on:
+      dynamodb-local-init:
+        condition: service_completed_successfully
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --show-error --output /dev/null http://localhost:8000/"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${DYNAMODB_LOCAL_PORT:-8000}:8000"
     volumes:
       - dynamodb-data:/home/dynamodblocal/data
 

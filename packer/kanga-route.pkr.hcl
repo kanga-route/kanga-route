@@ -27,27 +27,23 @@ variable "subnet_id" {
   default = ""
 }
 
-variable "aws_access_key" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "aws_secret_key" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
 
 source "amazon-ebs" "ubuntu" {
   ami_name                    = "${var.ami_prefix}-v${formatdate("YYYYMMDDhhmm", timestamp())}"
   instance_type               = "t3.micro"
   region                      = var.aws_region
-  access_key                  = var.aws_access_key != "" ? var.aws_access_key : null
-  secret_key                  = var.aws_secret_key != "" ? var.aws_secret_key : null
   vpc_id                      = var.vpc_id != "" ? var.vpc_id : null
   subnet_id                   = var.subnet_id != "" ? var.subnet_id : null
   associate_public_ip_address = true
+  imds_support                = "v2.0"
+
+  temporary_security_group_source_public_ip = true
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
 
   source_ami_filter {
     filters = {
@@ -60,7 +56,6 @@ source "amazon-ebs" "ubuntu" {
   }
 
   ssh_username = "ubuntu"
-  ami_groups   = ["all"]
 
   tags = {
     Name        = "Kanga-Route-Appliance"
@@ -79,13 +74,71 @@ build {
 
   provisioner "shell" {
     inline = [
-      "mkdir -p /tmp/kanga-route"
+      "mkdir -p /tmp/kanga-route/bin /tmp/kanga-route/systemd /tmp/kanga-route/src/kanga_route/cache /tmp/kanga-route/src/kanga_route/crm /tmp/kanga-route/src/kanga_route/engine"
     ]
   }
 
   provisioner "file" {
-    source      = "./"
-    destination = "/tmp/kanga-route"
+    sources = [
+      ".dockerignore",
+      ".env.example",
+      "Dockerfile",
+      "README.md",
+      "docker-compose.yml",
+      "pyproject.toml",
+      "requirements.txt",
+    ]
+    destination = "/tmp/kanga-route/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "bin/kanga-route",
+    ]
+    destination = "/tmp/kanga-route/bin/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "systemd/kanga-route.service",
+      "systemd/kanga-route-run.service",
+      "systemd/kanga-route-run.timer",
+    ]
+    destination = "/tmp/kanga-route/systemd/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/__init__.py",
+      "src/kanga_route/contracts.py",
+      "src/kanga_route/main.py",
+      "src/kanga_route/models.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/cache/__init__.py",
+      "src/kanga_route/cache/dynamodb.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/cache/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/crm/__init__.py",
+      "src/kanga_route/crm/hubspot.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/crm/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/engine/__init__.py",
+      "src/kanga_route/engine/verifier.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/engine/"
   }
 
   provisioner "shell" {
