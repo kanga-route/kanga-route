@@ -2,8 +2,8 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, model_validator
 
 
 class VerificationStatus(str, Enum):
@@ -48,7 +48,6 @@ class VerificationResult(BaseModel):
     """Strict verification result contract."""
 
     email: str
-    contact_id: Optional[str] = None
     status: VerificationStatus
     reason: VerificationReason
     mailbox_provider: MailboxProvider = MailboxProvider.OTHER
@@ -64,9 +63,25 @@ class VerificationResult(BaseModel):
         return self.model_dump(mode="json")
 
 
-class HubSpotContact(BaseModel):
-    """HubSpot Contact representation."""
+class VerificationTarget(BaseModel):
+    """Product-neutral record selected by an integration for verification."""
 
-    id: str
+    record_id: str
     email: str
-    properties: dict = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class VerificationOutcome(BaseModel):
+    """Associate adapter-owned record identity with verification evidence."""
+
+    target: VerificationTarget
+    result: VerificationResult
+
+    @model_validator(mode="after")
+    def target_and_result_emails_match(self):
+        """Reject unsafe writeback pairings for different email addresses."""
+        target_email = self.target.email.strip().casefold()
+        result_email = self.result.email.strip().casefold()
+        if target_email != result_email:
+            raise ValueError("target and result email addresses must match")
+        return self

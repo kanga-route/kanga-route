@@ -103,6 +103,8 @@ def test_cache_put_success_adds_ttl():
     assert item["email"] == "test@company.com"
     assert item["smtp_code"] == 250
     assert item["ttl"] > int(time.time())
+    assert "record_id" not in item
+    assert "contact_id" not in item
 
 
 def test_cache_refuses_unknown_results():

@@ -12,9 +12,11 @@ from kanga_route.crm.hubspot import (
 )
 from kanga_route.models import (
     MailboxProvider,
+    VerificationOutcome,
     VerificationReason,
     VerificationResult,
     VerificationStatus,
+    VerificationTarget,
 )
 
 
@@ -25,6 +27,13 @@ def _response(status_code=200, data=None, text="", headers=None):
     response.headers = headers or {}
     response.json.return_value = data if data is not None else {}
     return response
+
+
+def _outcome(result, record_id="101"):
+    return VerificationOutcome(
+        target=VerificationTarget(record_id=record_id, email=result.email),
+        result=result,
+    )
 
 
 def test_hubspot_fetch_requires_token():
@@ -55,7 +64,7 @@ def test_hubspot_fetch_builds_retry_and_stale_filters():
 
     contacts = client.fetch_unverified_contacts(limit=10)
 
-    assert [(contact.id, contact.email) for contact in contacts] == [
+    assert [(contact.record_id, contact.email) for contact in contacts] == [
         ("101", "lead1@acme.com")
     ]
     payload = session.post.call_args.kwargs["json"]
@@ -128,7 +137,7 @@ def test_hubspot_fetch_follows_paging_up_to_limit():
 
     contacts = client.fetch_unverified_contacts(limit=3)
 
-    assert [contact.id for contact in contacts] == ["101", "102", "103"]
+    assert [contact.record_id for contact in contacts] == ["101", "102", "103"]
     assert session.post.call_count == 2
     first_payload = session.post.call_args_list[0].kwargs["json"]
     second_payload = session.post.call_args_list[1].kwargs["json"]
@@ -192,12 +201,11 @@ def test_hubspot_batch_update_verification_results():
     client = HubSpotClient(access_token="test-token", session=session)
     result = VerificationResult(
         email="lead1@acme.com",
-        contact_id="101",
         status=VerificationStatus.VALID,
         reason=VerificationReason.OK,
     )
 
-    assert client.batch_update_verification_results([result]) is True
+    assert client.batch_update_verification_results([_outcome(result)]) is True
 
     payload = session.post.call_args.kwargs["json"]
     assert payload["inputs"][0]["id"] == "101"
@@ -236,7 +244,7 @@ def test_hubspot_timestamp_uses_epoch_milliseconds_without_mutating_model():
     assert result.verified_at == "1970-01-01T00:00:01.234Z"
 
 
-def test_hubspot_batch_update_requires_contact_id():
+def test_hubspot_batch_update_requires_record_id():
     client = HubSpotClient(access_token="test-token", session=MagicMock())
     result = VerificationResult(
         email="lead1@acme.com",
@@ -244,8 +252,8 @@ def test_hubspot_batch_update_requires_contact_id():
         reason=VerificationReason.OK,
     )
 
-    with pytest.raises(HubSpotError, match="contact_id"):
-        client.batch_update_verification_results([result])
+    with pytest.raises(HubSpotError, match="record ID"):
+        client.batch_update_verification_results([_outcome(result, record_id="")])
 
 
 def test_hubspot_batch_update_rejects_partial_response():
@@ -257,13 +265,12 @@ def test_hubspot_batch_update_rejects_partial_response():
     client = HubSpotClient(access_token="test-token", session=session)
     result = VerificationResult(
         email="lead1@acme.com",
-        contact_id="101",
         status=VerificationStatus.VALID,
         reason=VerificationReason.OK,
     )
 
     with pytest.raises(HubSpotError, match="207"):
-        client.batch_update_verification_results([result])
+        client.batch_update_verification_results([_outcome(result)])
 
 
 @pytest.mark.parametrize("status", ["PENDING", "PROCESSING", "CANCELED"])
@@ -273,13 +280,12 @@ def test_hubspot_batch_update_requires_complete_status(status):
     client = HubSpotClient(access_token="test-token", session=session)
     result = VerificationResult(
         email="lead1@acme.com",
-        contact_id="101",
         status=VerificationStatus.VALID,
         reason=VerificationReason.OK,
     )
 
     with pytest.raises(HubSpotError, match="did not complete"):
-        client.batch_update_verification_results([result])
+        client.batch_update_verification_results([_outcome(result)])
 
 
 def test_hubspot_batch_update_rejects_missing_status():
@@ -288,13 +294,12 @@ def test_hubspot_batch_update_rejects_missing_status():
     client = HubSpotClient(access_token="test-token", session=session)
     result = VerificationResult(
         email="lead1@acme.com",
-        contact_id="101",
         status=VerificationStatus.VALID,
         reason=VerificationReason.OK,
     )
 
     with pytest.raises(HubSpotError, match="missing status"):
-        client.batch_update_verification_results([result])
+        client.batch_update_verification_results([_outcome(result)])
 
 
 def test_hubspot_batch_update_rejects_invalid_json():
@@ -305,10 +310,9 @@ def test_hubspot_batch_update_rejects_invalid_json():
     client = HubSpotClient(access_token="test-token", session=session)
     result = VerificationResult(
         email="lead1@acme.com",
-        contact_id="101",
         status=VerificationStatus.VALID,
         reason=VerificationReason.OK,
     )
 
     with pytest.raises(HubSpotError, match="invalid JSON"):
-        client.batch_update_verification_results([result])
+        client.batch_update_verification_results([_outcome(result)])

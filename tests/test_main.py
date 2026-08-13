@@ -12,7 +12,8 @@ from kanga_route.main import (
     run_pipeline,
 )
 from kanga_route.models import (
-    HubSpotContact,
+    VerificationOutcome,
+    VerificationTarget,
     VerificationReason,
     VerificationResult,
     VerificationStatus,
@@ -26,8 +27,8 @@ def _set_valid_runtime(monkeypatch):
     monkeypatch.setenv("USE_LOCAL_DB", "true")
 
 
-def _contact(contact_id="201", email="newlead@company.com"):
-    return HubSpotContact(id=contact_id, email=email)
+def _contact(record_id="201", email="newlead@company.com"):
+    return VerificationTarget(record_id=record_id, email=email)
 
 
 def _result(email="newlead@company.com", status=VerificationStatus.VALID):
@@ -41,6 +42,30 @@ def _result(email="newlead@company.com", status=VerificationStatus.VALID):
         status=status,
         reason=reason,
     )
+
+
+def test_verification_outcome_associates_evidence_without_embedding_identity():
+    result = _result("shared@company.com")
+    hubspot_target = _contact("hubspot-101", "shared@company.com")
+    csv_target = _contact("row-7", "shared@company.com")
+
+    hubspot_outcome = VerificationOutcome(
+        target=hubspot_target, result=result
+    )
+    csv_outcome = VerificationOutcome(target=csv_target, result=result)
+
+    assert hubspot_outcome.result == csv_outcome.result
+    assert hubspot_outcome.target.record_id == "hubspot-101"
+    assert csv_outcome.target.record_id == "row-7"
+    assert "record_id" not in result.to_dict()
+
+
+def test_verification_outcome_rejects_mismatched_email_pairing():
+    with pytest.raises(ValueError, match="email addresses must match"):
+        VerificationOutcome(
+            target=_contact("201", "first@company.com"),
+            result=_result("second@company.com"),
+        )
 
 
 def test_run_pipeline_orchestration():
@@ -61,7 +86,8 @@ def test_run_pipeline_orchestration():
     engine.verify.assert_called_once_with("newlead@company.com")
     cache.put.assert_called_once()
     written = crm.batch_update_verification_results.call_args.args[0]
-    assert written[0].contact_id == "201"
+    assert written[0].target.record_id == "201"
+    assert written[0].result.email == "newlead@company.com"
 
 
 def test_run_pipeline_cache_hit_skips_engine():
@@ -71,13 +97,45 @@ def test_run_pipeline_cache_hit_skips_engine():
     crm.fetch_unverified_contacts.return_value = [
         _contact("202", "cachedlead@company.com")
     ]
-    cache.get.return_value = _result("cachedlead@company.com")
+    cached_result = _result("cachedlead@company.com")
+    cached_snapshot = cached_result.to_dict()
+    cache.get.return_value = cached_result
     crm.batch_update_verification_results.return_value = True
 
     assert run_pipeline(crm, cache, engine, batch_size=10) == 1
 
     engine.verify.assert_not_called()
     cache.put.assert_not_called()
+    outcomes = crm.batch_update_verification_results.call_args.args[0]
+    assert outcomes[0].target.record_id == "202"
+    assert outcomes[0].result is cached_result
+    assert cached_result.to_dict() == cached_snapshot
+
+
+def test_run_pipeline_preserves_record_pairing_for_mixed_batch():
+    crm = MagicMock()
+    cache = MagicMock()
+    engine = MagicMock()
+    crm.fetch_unverified_contacts.return_value = [
+        _contact("fresh-301", "fresh@company.com"),
+        _contact("cached-302", "cached@company.com"),
+    ]
+    cache.get.side_effect = [None, _result("cached@company.com")]
+    cache.put.return_value = True
+    engine.verify.return_value = _result("fresh@company.com")
+    crm.batch_update_verification_results.return_value = True
+
+    assert run_pipeline(crm, cache, engine, batch_size=10) == 2
+
+    outcomes = crm.batch_update_verification_results.call_args.args[0]
+    pairing = {
+        outcome.target.record_id: outcome.result.email
+        for outcome in outcomes
+    }
+    assert pairing == {
+        "fresh-301": "fresh@company.com",
+        "cached-302": "cached@company.com",
+    }
 
 
 def test_run_pipeline_unknown_result_is_written_back_but_not_cached():

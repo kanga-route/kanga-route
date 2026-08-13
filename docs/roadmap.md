@@ -34,10 +34,10 @@ catch-all checks; conservative result classifications; bounded concurrency;
 local or managed DynamoDB caching; a HubSpot integration; Docker Compose,
 systemd, Packer, Pulumi, SSM-first administration, and CI.
 
-The verifier is reusable today, but shared code still contains HubSpot-specific
-types and behavior: `HubSpotContact`, `ICRMClient`, `contact_id`, and
-`to_hubspot_properties()`. Removing that coupling is the next architectural
-milestone.
+Shared verification evidence, input targets, and target-result associations are now
+product-neutral. HubSpot owns its record mapping and property formatting. The
+remaining shared product coupling is the CRM-shaped `ICRMClient` contract and
+HubSpot-specific entrypoint behavior; CORE-04 is the next architectural gate.
 
 ## Contributor workflow
 
@@ -67,6 +67,8 @@ the future UI without importing product-specific code.
 
 ### CORE-01 — Introduce a product-neutral input record
 
+**Status:** Complete
+
 **Size:** M
 
 **Labels:** `area/core`, `help wanted`, `ready`
@@ -84,6 +86,8 @@ Acceptance criteria:
 
 ### CORE-02 — Separate verification evidence from record identity
 
+**Status:** Complete
+
 **Size:** M
 
 **Labels:** `area/core`, `needs design`
@@ -100,6 +104,8 @@ Acceptance criteria:
 - Batch and cache-hit result pairing is tested.
 
 ### CORE-03 — Move result formatting into adapters
+
+**Status:** Complete
 
 **Size:** S
 
@@ -469,13 +475,13 @@ These require an ADR and explicit maintainer approval:
 - Additional image formats without demonstrated users and maintainers.
 - Automatically suppressing contacts based only on `Unknown` or `Catch-All`.
 
-## Suggested first contributor issues
+## Suggested next contributor issues
 
-1. **CORE-03:** move HubSpot formatting into the HubSpot package.
-2. **OPS-05:** support pre-provisioned DynamoDB.
-3. **CORE-01:** introduce the neutral verification target.
-4. **INT-03:** write the integration guide after contract approval.
-5. **OPS-01:** inventory and pin one dependency category at a time.
+1. **OPS-05:** support pre-provisioned DynamoDB.
+2. **OPS-01:** inventory and pin one dependency category at a time.
+3. **CORE-04:** propose the adapter contract ADR with maintainer guidance.
+4. **OPS-03:** add privacy-safe metrics and run summaries.
+5. **OPS-04:** document and test backup and restore.
 
-CORE-03 and OPS-05 are the smallest code changes. CORE-01 is the best entry
-point for a contributor who wants to establish the integration framework.
+OPS-05 is the smallest independent code change. CORE-04 is the critical path
+for contributors who want to unlock the integration framework.
