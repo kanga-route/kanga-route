@@ -12,7 +12,7 @@ WorkingDirectory=/opt/kanga-route
 Environment=USE_LOCAL_DB=true
 EnvironmentFile=-/opt/kanga-route/.env
 ExecStart=/usr/local/bin/kanga-route _stack-up
-ExecStop=/usr/bin/docker compose down
+ExecStop=/usr/bin/docker compose --profile ui down
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=kanga-route-stack

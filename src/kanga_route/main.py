@@ -8,6 +8,7 @@ import time
 from typing import List, Optional, Sequence
 
 from kanga_route.cache.dynamodb import CacheError, DynamoDBCacheStore
+from kanga_route.configuration import validate_smtp_identity
 from kanga_route.contracts import ICacheStore, ICRMClient, IVerificationPipeline
 from kanga_route.crm.hubspot import HubSpotClient, HubSpotError
 from kanga_route.engine.verifier import AsyncVerificationEngine, VerificationEngine
@@ -33,34 +34,7 @@ def _validate_runtime_configuration() -> None:
     if database_mode not in {"true", "false"}:
         raise ValueError("USE_LOCAL_DB must be either true or false")
 
-    helo_domain = os.getenv(
-        "SMTP_HELO_DOMAIN", "verifier.example.invalid"
-    ).strip().lower().rstrip(".")
-    from_email = os.getenv(
-        "SMTP_MAIL_FROM", "verify@example.invalid"
-    ).strip().lower()
-    from_local, separator, from_domain = from_email.rpartition("@")
-    if (
-        not helo_domain
-        or helo_domain.endswith(".invalid")
-        or "." not in helo_domain
-        or any(character.isspace() for character in helo_domain)
-    ):
-        raise ValueError(
-            "SMTP_HELO_DOMAIN must be a configured public hostname"
-        )
-    if (
-        separator != "@"
-        or from_email.count("@") != 1
-        or not from_local
-        or not from_domain
-        or "." not in from_domain
-        or from_domain.endswith(".invalid")
-        or any(character.isspace() for character in from_email)
-    ):
-        raise ValueError(
-            "SMTP_MAIL_FROM must be a configured sender address"
-        )
+    validate_smtp_identity()
 
 
 def _ensure_cache_ready(

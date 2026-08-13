@@ -295,6 +295,8 @@ The first UI is a self-hosted operator tool, not a public multi-tenant service.
 
 ### UI-01 — Extract a single-verification application service
 
+**Status:** Complete
+
 **Size:** M
 
 **Labels:** `area/core`, `area/ui`, `help wanted`
@@ -314,6 +316,8 @@ Acceptance criteria:
 
 ### UI-02 — Add a versioned HTTP API
 
+**Status:** Complete
+
 **Size:** M
 
 **Labels:** `area/ui`, `area/security`, `needs design`
@@ -332,6 +336,8 @@ Acceptance criteria:
 - Every status and reason is documented.
 
 ### UI-03 — Build the minimal browser interface
+
+**Status:** Complete
 
 **Size:** M
 

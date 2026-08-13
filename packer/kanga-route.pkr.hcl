@@ -74,7 +74,7 @@ build {
 
   provisioner "shell" {
     inline = [
-      "mkdir -p /tmp/kanga-route/bin /tmp/kanga-route/systemd /tmp/kanga-route/src/kanga_route/cache /tmp/kanga-route/src/kanga_route/crm /tmp/kanga-route/src/kanga_route/engine"
+      "mkdir -p /tmp/kanga-route/bin /tmp/kanga-route/systemd /tmp/kanga-route/src/kanga_route/application /tmp/kanga-route/src/kanga_route/cache /tmp/kanga-route/src/kanga_route/crm /tmp/kanga-route/src/kanga_route/engine /tmp/kanga-route/src/kanga_route/web/static"
     ]
   }
 
@@ -111,6 +111,7 @@ build {
     sources = [
       "src/kanga_route/__init__.py",
       "src/kanga_route/contracts.py",
+      "src/kanga_route/configuration.py",
       "src/kanga_route/main.py",
       "src/kanga_route/models.py",
     ]
@@ -119,10 +120,36 @@ build {
 
   provisioner "file" {
     sources = [
+      "src/kanga_route/application/__init__.py",
+      "src/kanga_route/application/cli.py",
+      "src/kanga_route/application/single_verification.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/application/"
+  }
+
+  provisioner "file" {
+    sources = [
       "src/kanga_route/cache/__init__.py",
       "src/kanga_route/cache/dynamodb.py",
     ]
     destination = "/tmp/kanga-route/src/kanga_route/cache/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/web/__init__.py",
+      "src/kanga_route/web/app.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/web/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/web/static/index.html",
+      "src/kanga_route/web/static/app.css",
+      "src/kanga_route/web/static/app.js",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/web/static/"
   }
 
   provisioner "file" {
