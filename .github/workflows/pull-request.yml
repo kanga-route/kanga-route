@@ -1,64 +1,124 @@
-name: Pull Request CI & Test Suite
+name: Pull Request CI
 
 on:
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
+
+permissions:
+  contents: read
 
 jobs:
   test-python:
-    name: Run Pytest Unit Tests
+    name: Python tests and syntax
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: "3.12"
+          cache: pip
 
-      - name: Install Dependencies
+      - name: Install project and test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --editable ".[dev]"
 
-      - name: Run Pytest Test Suite
+      - name: Compile Python sources
+        run: python -m compileall -q src tests infra
+
+      - name: Run test suite
+        run: python -m pytest --verbose
+
+  validate-appliance:
+    name: Compose and appliance smoke checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: |
+          bash -n bin/kanga-route
+          bash -n packer/scripts/provision.sh
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Verify Compose credential isolation
         env:
-          PYTHONPATH: src
-        run: pytest --verbose
+          AWS_ACCESS_KEY_ID: synthetic-ci-access-key
+          AWS_SECRET_ACCESS_KEY: synthetic-ci-secret-key
+          AWS_SESSION_TOKEN: synthetic-ci-session-token
+        run: |
+          docker compose config --format json | python -c '
+          import json, sys
+          environment = json.load(sys.stdin)["services"]["engine"]["environment"]
+          forbidden = {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"}
+          leaked = sorted(forbidden.intersection(environment))
+          if leaked:
+              raise SystemExit(f"Compose forwards host AWS credentials: {leaked}")
+          '
+
+      - name: Reject malformed database mode
+        run: |
+          if USE_LOCAL_DB=invalid KANGA_ROUTE_DIR="$PWD" bin/kanga-route _stack-up; then
+            echo "Malformed USE_LOCAL_DB was accepted" >&2
+            exit 1
+          fi
+
+      - name: Build engine image
+        run: docker compose build engine
+
+      - name: Smoke-test engine CLI
+        run: docker compose run --rm --no-deps engine kanga-route-engine --help
+      - name: Smoke-test local cache
+        run: |
+          docker compose up -d --wait dynamodb-local
+          docker compose run -T --rm --no-deps engine python - <<'PY'
+          from kanga_route.cache.dynamodb import DynamoDBCacheStore
+          from kanga_route.models import (
+              VerificationReason,
+              VerificationResult,
+              VerificationStatus,
+          )
+          store = DynamoDBCacheStore()
+          store.ensure_table_exists()
+          email = "ci-smoke@kanga-route.invalid"
+          result = VerificationResult(
+              email=email,
+              status=VerificationStatus.VALID,
+              reason=VerificationReason.OK,
+          )
+          store.put(result, ttl_seconds=60)
+          loaded = store.get(email)
+          assert loaded is not None and loaded.status == VerificationStatus.VALID
+          store.table.delete_item(Key={"email": email})
+          print("local cache round-trip: ok")
+          PY
+      - name: Clean up appliance smoke test
+        if: always()
+        run: docker compose down
 
   validate-packer:
-    name: Validate Packer Appliance Template
+    name: Validate Packer template
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup HashiCorp Packer
+      - name: Set up Packer
         uses: hashicorp/setup-packer@v2
         with:
-          version: 'latest'
+          version: "latest"
 
-      - name: Initialize Packer Plugins
+      - name: Initialize Packer plugins
         run: packer init packer/kanga-route.pkr.hcl
 
-      - name: Validate Packer Template
+      - name: Validate Packer template
         run: packer validate packer/kanga-route.pkr.hcl
-
-  validate-infrastructure:
-    name: Check Pulumi IaC Syntax
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Check Pulumi Infrastructure Syntax
-        run: python -m compileall infra/

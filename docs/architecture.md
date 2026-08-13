@@ -1,55 +1,52 @@
-# Kanga-Route Architecture Overview 📐
+# Kanga-Route Architecture
 
-Kanga-Route operates as a **Containerized Virtual Appliance**. The application logic is fully containerized, but deployed via pre-baked Amazon Machine Images (AMIs) to bypass the outbound networking restrictions typical of serverless cloud platforms.
-
----
-
-## System Architecture Topology
+Kanga-Route is a self-hosted AWS appliance that verifies HubSpot contact email
+addresses without sending message bodies.
 
 ```mermaid
-graph TD
-    subgraph HubSpot["HubSpot CRM"]
-        HS["HubSpot Contacts API v3"]
-    end
-
-    subgraph HostVM["Host VM / EC2 Instance (Kanga-Route Appliance)"]
-        CLI["kanga-route CLI Wrapper"] -->|Trigger Run| Compose["Docker Compose Stack"]
-        Systemd["systemd: kanga-route.service"] -->|Auto-start on boot| Compose
-
-        subgraph DockerStack["Docker Compose Container Stack"]
-            Engine["verifier-engine Container"]
-            CacheDB["dynamodb-local Container"]
-        end
-    end
-
-    subgraph External["External Network / Internet"]
-        DNS["Public DNS Resolvers"]
-        MX["Recipient Mail Servers (Port 25)"]
-    end
-
-    Engine -->|1. Fetch Unverified Contacts| HS
-    Engine -->|2. Check Cache| CacheDB
-    Engine -->|3. Query MX Records| DNS
-    Engine -->|4. Direct SMTP Handshake| MX
-    Engine -->|5. Store Result| CacheDB
-    Engine -->|6. Batch Writeback Properties| HS
+flowchart TD
+    Timer["systemd daily timer"] --> Run["oneshot run service + file lock"]
+    CLI["kanga-route CLI"] --> Run
+    Run --> Engine["non-root verifier container"]
+    Engine --> HubSpot["HubSpot Contacts API"]
+    Engine --> DNS["DNS resolvers"]
+    Engine --> MX["Recipient MX servers: TCP 25"]
+    Engine --> Cache{"Cache mode"}
+    Cache --> Local["DynamoDB Local volume"]
+    Cache --> Cloud["Managed DynamoDB"]
+    Engine --> HubSpot
 ```
 
----
+## Verification flow
 
-## 1. The Container Layer (Docker Compose)
-* **The Verification Engine:** A lightweight Python container responsible for paging the HubSpot API, evaluating the 4-layer validation sequence (Regex, Blocklist, DNS, SMTP socket with STARTTLS and Catch-All dummy check), and batch-updating the CRM.
-* **The Cache (DynamoDB Local / Cloud):** A sidecar container running `amazon/dynamodb-local` (or managed AWS DynamoDB). It stores verification statuses and timestamps to prevent redundant SMTP connections on static emails, saving bandwidth and protecting the host's IP reputation.
+The engine pages unverified contacts, cooldown-eligible `Unknown` contacts,
+and results older than `REVERIFY_AFTER_DAYS`. Syntax and disposable-domain
+failures terminate early.
+Authoritative DNS absence can produce `Invalid / No_MX`; transient DNS
+failures produce `Unknown`. SMTP checks try MX hosts in priority order,
+perform opportunistic STARTTLS, test a randomized recipient for catch-all
+behavior, and require explicit recipient-not-found evidence before producing
+`Invalid / User_Not_Found`.
 
----
+A global asynchronous semaphore caps concurrent probes across different
+customer domains. Unknown results are written back for visibility but not
+cached. Definitive results use DynamoDB TTL.
 
-## 2. The Host OS Layer (Packer-Built VM)
-* **The OS:** A lightweight, standard Linux distribution (Ubuntu Jammy 22.04 LTS).
-* **The Orchestrator:** The host OS runs a native systemd service (`kanga-route.service`) that automatically starts the Docker Compose stack the moment the VM boots.
-* **The Control Plane:** A bash wrapper script (`/usr/local/bin/kanga-route`) is baked into the OS. It allows engineers to easily trigger manual Docker runs (`kanga-route run`), view container status (`kanga-route status`), inspect logs (`kanga-route logs`), and update cron schedules (`kanga-route schedule`).
+## Host control plane
 
----
+Packer installs Docker, an allowlisted application payload, three systemd
+units, and the `kanga-route` command. The stack unit starts DynamoDB Local only
+when local mode is selected. A persistent timer invokes a oneshot run service
+daily; journald retains output, and `flock` prevents overlap.
 
-## 3. The Cloud Network Subsystem (AWS VPC)
-* **Elastic IP & rDNS:** A static public IP is attached to the host VM, mapped to a verified Reverse DNS (PTR) record. Major mail providers will drop SMTP handshakes from IPs lacking proper rDNS.
-* **Port 25 Unblocking:** The host VM's network security groups allow outbound TCP Port 25. *(Note: AWS requires a support ticket to unblock this port at the account level)*.
+## AWS deployment
+
+Pulumi creates the VPC, public subnet, egress rules, IAM instance profile,
+Elastic IP, and EC2 instance. It requires a Kanga-Route AMI ID rather than
+falling back to Ubuntu, requires IMDSv2, encrypts the root disk, and exposes no
+SSH ingress unless a restricted CIDR is explicitly configured. SSM Session
+Manager is the default administration path.
+
+Outbound port 25 still requires AWS account approval, and operators must align
+the appliance Elastic IP with forward DNS, reverse DNS, and the configured SMTP
+identity.

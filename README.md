@@ -1,103 +1,103 @@
 ![Kanga-Route Banner](banner.png)
 
-# Kanga-Route 🦘
+# Kanga-Route
 
-<p align="center">
-  <a href="https://github.com/shereford"><img src="https://img.shields.io/badge/author-@shereford-blue.svg?logo=github" alt="Author"></a>
-  <a href="https://github.com/kanga-route/kanga-route/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python"></a>
-  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/docker-ready-2496ED.svg" alt="Docker"></a>
-  <a href="https://aws.amazon.com/"><img src="https://img.shields.io/badge/AWS-AMI%20Public-FF9900.svg" alt="AWS AMI"></a>
-  <a href="https://github.com/kanga-route/kanga-route/actions"><img src="https://img.shields.io/badge/tests-20%20passed-success.svg" alt="Tests"></a>
-</p>
+Kanga-Route is a self-hosted AWS appliance that verifies HubSpot contact email
+addresses before sales outreach. It pages contacts from HubSpot, applies
+syntax/disposable-domain/DNS/SMTP checks, caches definitive outcomes, and
+writes five granular properties back to the original contacts.
 
-> 💎 **Zero SaaS fees. Zero hard bounces.**  
-> Kanga-Route bridges the gap between sales operations and email deliverability. By running deep, 4-layer email verification (STARTTLS, Catch-All dummy checks, async provider throttling) on an isolated cloud appliance, it eliminates recurring SaaS subscription fees while protecting your domain score and keeping your HubSpot CRM operating cleanly.
+It does not send email message bodies.
 
----
+## MVP capabilities
 
-## 🚀 Quick Launch (Pre-Built Public AMI)
+- Conservative four-stage verification with catch-all detection, STARTTLS,
+  multiple-MX failover, and a global concurrency cap.
+- Safe classifications: transient DNS, SMTP, and policy failures stay
+  `Unknown`; explicit evidence is required for `Invalid`.
+- HubSpot paging, bounded API retry, cooldown-aware re-verification, and
+  exact contact-ID writebacks.
+- DynamoDB Local for a zero-infrastructure cache, or managed DynamoDB through
+  the EC2 instance role; both use a 30-day default TTL.
+- A daily persistent systemd timer, manual `kanga-route` control plane,
+  journald logs, and overlap protection.
+- A private-candidate-only Packer AMI workflow and Pulumi infrastructure that
+  requires an appliance AMI and defaults to SSM-only administration.
 
-Deploy the official Kanga-Route virtual appliance directly into your AWS account with a single click:
+## Quick start
 
-| AWS Region | AMI ID | Name | Visibility | Quick Launch |
-|---|---|---|---|---|
-| **`us-east-1`** (N. Virginia) | **`ami-0621206b8c7bfc85c`** | `Kanga-Route-Appliance` | **Public** | [**Launch Appliance in AWS Console 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-0621206b8c7bfc85c) |
+AMI builds are always private candidates. Run the manual Packer workflow
+from the commit you intend to release, boot and smoke-test the resulting AMI,
+and deploy that exact candidate privately after it passes staging. Public
+sharing is a separate manual release operation for now; automating promotion of
+the exact staged candidate, without rebuilding it, is post-MVP work.
 
-> [!IMPORTANT]
-> **Prerequisites**: Configure 5 custom contact properties in HubSpot and submit the AWS Port 25 unblock request before running production verifications. See the complete [Setup & Operations Guide](docs/setup.md).
+The previously listed public AMI predates this MVP work. It is intentionally
+not advertised as an MVP release image; use a candidate built from the current
+commit.
 
----
+Before the first production run you must:
 
-## 🎯 Sales Operations & HubSpot CRM Impact
+1. create the five exact HubSpot contact properties and a private app;
+2. allocate an Elastic IP and align A, PTR, SPF, HELO, and envelope-from values;
+3. obtain AWS outbound port 25 approval;
+4. copy `.env.example` to `.env`, store it with mode `0600`, and replace
+   the fail-safe `.invalid` SMTP placeholders; and
+5. start a manual smoke run with `sudo kanga-route run`.
 
-Kanga-Route protects company sender scores by preventing deliverability drops below HubSpot’s **5% hard bounce suspension threshold**. It automatically writes back 5 granular contact properties to trigger automated CRM workflows (such as un-enrolling contacts from Sales Sequences and assigning tasks to reps).
+Follow [the setup and operations guide](docs/setup.md) for exact property types,
+Pulumi configuration, cache modes, schedules, and result semantics.
 
-👉 **[Read the full HubSpot User Story & Sales Workflow Guide](docs/hubspot-user-story.md)**
+## Local development
 
----
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install --editable ".[dev]"
+python -m pytest
 
-## 📐 System Architecture
-
-Kanga-Route runs as a containerized appliance (`verifier-engine` + `dynamodb-local`) orchestrated by systemd on a Packer-built Ubuntu VM with an isolated host CLI control plane.
-
-👉 **[View the complete System Architecture Topology & Diagrams](docs/architecture.md)**
-
----
-
-## ⚡ Feature Highlights
-
-- **4-Layer Verification Sequence**: Syntax & Role check, 150+ Disposable Domain Blocklist, DNS MX Provider Fingerprinting, and direct TCP Port 25 SMTP Socket Handshake with STARTTLS and random dummy Catch-All detection.
-- **Async Concurrency & Provider Throttling**: Provider-based `asyncio.Semaphore` rate-limiting (max 5 concurrent connections to Google/Outlook MX hosts) to prevent IP blacklisting.
-- **Dual-Mode Cache Persistence**: Toggle seamlessly between local sidecar (`dynamodb-local`) and managed AWS Cloud DynamoDB with 30-day automatic TTL expiration.
-- **Granular CRM Intelligence**: Pushes `email_verification_status`, `email_verification_reason`, `mailbox_provider`, `is_role_account`, and `last_verified` to HubSpot contacts.
-- **Host OS Control Plane CLI**: Simple host wrapper (`kanga-route run`, `status`, `logs`, `schedule`).
-
----
-
-## 📚 Documentation Index
-
-For detailed step-by-step installation guides, architecture specifications, and operational best practices, refer to the dedicated documentation guides:
-
-| Guide | Description | Link |
-|---|---|---|
-| 📖 **Setup & Operations Guide** | Step-by-step HubSpot setup, DNS records (A, PTR, SPF), AWS Console / Pulumi deployment, and connection methods | [**docs/setup.md**](docs/setup.md) |
-| 🎯 **HubSpot User Story & Sales Workflow** | Deliverability protection, sequence un-enrollment workflows, and sales analytics | [**docs/hubspot-user-story.md**](docs/hubspot-user-story.md) |
-| 📐 **Architecture Overview** | System layout, topology diagram, container stack, and host control plane | [**docs/architecture.md**](docs/architecture.md) |
-| 🛡️ **Long-Term Use Advice** | IP reputation management, rate limiting, log rotation, and DynamoDB scaling | [**docs/long-term-use.md**](docs/long-term-use.md) |
-| 🗺️ **Roadmap** | Multi-phase development milestones and feature releases | [**docs/roadmap.md**](docs/roadmap.md) |
-| 📋 **ADR 0001** | Containerized Virtual Appliance (Docker + Packer) | [**docs/adr/0001-use-containerized-virtual-appliance.md**](docs/adr/0001-use-containerized-virtual-appliance.md) |
-| 📋 **ADR 0002** | Dual-Mode DynamoDB Caching Strategy | [**docs/adr/0002-dual-mode-dynamodb-caching.md**](docs/adr/0002-dual-mode-dynamodb-caching.md) |
-| 📋 **ADR 0003** | Granular CRM Intelligence Writebacks | [**docs/adr/0003-hubspot-granular-writebacks.md**](docs/adr/0003-hubspot-granular-writebacks.md) |
-
----
-
-## 📁 Project Directory Structure
-
-```text
-kanga-route/
-├── banner.png                     # Kanga-Route header banner
-├── README.md                      # Primary documentation guide
-├── Dockerfile                     # Python engine container image build
-├── docker-compose.yml             # Local engine + dynamodb-local container stack
-├── pyproject.toml                 # Package configuration
-├── requirements.txt               # Dependencies
-├── .env.example                   # Environment configuration template
-│
-├── bin/
-│   └── kanga-route                # Host OS CLI wrapper script
-├── systemd/
-│   └── kanga-route.service        # Systemd unit file for VM boot orchestration
-├── src/
-│   └── kanga_route/               # Engine source code (verifier, cache, crm, main)
-├── tests/                         # Automated test suite (20 tests passing)
-├── packer/                        # AMI image bakery (kanga-route.pkr.hcl)
-├── infra/                         # Pulumi Infrastructure-as-Code stack
-└── docs/                          # Dedicated setup, user story, architecture & ADR guides
+docker compose config --quiet
+docker compose build engine
+docker compose run --rm --no-deps engine kanga-route-engine --help
 ```
 
----
+A clean checkout does not require a secret `.env` merely to validate or build
+the Compose project. A real verification run intentionally fails until the
+HubSpot token and public SMTP identity are configured.
 
-## 👤 Author & Maintainer
+## Documentation
 
-Designed and maintained by [@shereford](https://github.com/shereford). Feedback, issues, and pull requests are welcome!
+- [Setup and operations](docs/setup.md)
+- [Architecture](docs/architecture.md)
+- [HubSpot user story and workflows](docs/hubspot-user-story.md)
+- [Long-term operations](docs/long-term-use.md)
+- [Roadmap](docs/roadmap.md)
+- [ADR 0001: Containerized appliance](docs/adr/0001-use-containerized-virtual-appliance.md)
+- [ADR 0002: Dual-mode DynamoDB cache](docs/adr/0002-dual-mode-dynamodb-caching.md)
+- [ADR 0003: HubSpot writebacks](docs/adr/0003-hubspot-granular-writebacks.md)
+
+## Repository layout
+
+```text
+.
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+├── bin/kanga-route
+├── systemd/
+├── src/kanga_route/
+├── tests/
+├── packer/
+├── infra/
+└── docs/
+```
+
+## Safety notes
+
+Email probing is inherently probabilistic. Do not suppress a contact merely
+because it is `Unknown` or `Catch-All`. Run only from infrastructure and
+domains you control, respect provider policies, keep batch sizes conservative,
+and monitor IP reputation.
+
+Kanga-Route is MIT licensed and maintained by
+[@shereford](https://github.com/shereford).

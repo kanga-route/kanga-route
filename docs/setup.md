@@ -1,160 +1,165 @@
-# Kanga-Route Setup & Operations Guide 🦘
+# Kanga-Route Setup & Operations Guide
 
-This comprehensive guide details the setup process for HubSpot CRM, AWS infrastructure provisioning, connection methods (EC2 Instance Connect, SSM Session Manager, User Data, and SSH), and daily operation of the Kanga-Route appliance.
+This guide takes a new Kanga-Route appliance from a clean launch to a
+scheduled HubSpot verification run.
 
----
+## 1. Configure HubSpot
 
-## Phase 1: HubSpot CRM Configuration
+### Create the five contact properties
 
-### 1. Create Custom Contact Properties
-In your HubSpot portal, navigate to **Settings ⚙️ > Data Management > Properties > Contact Properties > Create Property**:
+In **Settings > Data Management > Properties**, select **Contact properties**
+and create these properties with the exact internal names and values below.
 
-| Property Label | Internal Name (*Must Match Exactly*) | Field Type | Allowed Options / Values |
+| Label | Internal name | Type | Values |
 |---|---|---|---|
-| **Email Verification Status** | `email_verification_status` | Dropdown Select | `Valid`, `Invalid`, `Catch-All`, `Unknown` |
-| **Email Verification Reason** | `email_verification_reason` | Dropdown Select | `OK`, `Syntax_Error`, `Disposable`, `No_MX`, `User_Not_Found`, `Greylisted`, `Timeout`, `Connection_Refused`, `Unknown_Host` |
-| **Mailbox Provider** | `mailbox_provider` | Single-line Text | Free text (e.g., `Google Workspace`, `Microsoft 365`) |
-| **Is Role Account** | `is_role_account` | Single-line Text | `true` / `false` |
-| **Last Verified** | `last_verified` | Single-line Text | ISO 8601 Datetime String |
+| Email Verification Status | `email_verification_status` | Dropdown select | `Valid`, `Invalid`, `Catch-All`, `Unknown` |
+| Email Verification Reason | `email_verification_reason` | Dropdown select | `OK`, `Syntax_Error`, `Disposable`, `No_MX`, `User_Not_Found`, `Greylisted`, `Timeout`, `Connection_Refused`, `Unknown_Host`, `DNS_Timeout`, `DNS_Error`, `SMTP_Temporary_Failure`, `SMTP_Rejected` |
+| Mailbox Provider | `mailbox_provider` | Single-line text | Free text |
+| Is Role Account | `is_role_account` | Single-line text | `true` or `false` |
+| Last Verified | `last_verified` | Date and time picker | Datetime |
 
-### 2. Generate Private App Token
-1. Navigate to **Settings ⚙️ > Integrations > Private Apps**.
-2. Click **Create a private app**.
-3. Under **Scopes**, grant the following permissions:
-   - `crm.objects.contacts.read`
-   - `crm.objects.contacts.write`
-4. Save the app and copy your Access Token (`pat-na1-xxxxxxxx-xxxx...`).
+The `last_verified` property must be a HubSpot datetime property. Kanga-Route
+writes Unix epoch milliseconds so it can search for stale contacts and verify
+them again after the configured interval.
 
----
+### Create a private app
 
-## Phase 2: Domain DNS & AWS Egress Setup
+1. Open **Settings > Integrations > Private Apps**.
+2. Create a private app with `crm.objects.contacts.read` and
+   `crm.objects.contacts.write`.
+3. Copy its access token. Store it only in `/opt/kanga-route/.env` or a
+   managed secret workflow; never commit it or bake it into an AMI.
 
-Even though Kanga-Route **does not send actual email messages** (it terminates connections immediately after the `RCPT TO` socket handshake), recipient mail servers (Google Workspace, Microsoft 365) run automated real-time DNS security checks on connecting IP addresses.
+Kanga-Route fetches contacts with no verification status; `Unknown` contacts
+whose timestamp is missing or older than `UNKNOWN_RETRY_AFTER_HOURS`; and any
+contact with a `last_verified` value older than `REVERIFY_AFTER_DAYS`.
 
-To prevent mail servers from dropping connections or flagging socket checks as spam, you must configure the following **3 DNS records** on your domain (`yourdomain.com`):
+## 2. Configure the SMTP identity and AWS egress
 
-### 1. DNS A Record (Forward Lookup)
-In your domain registrar (e.g., Cloudflare, Route53, Namecheap, GoDaddy), create a DNS `A` record pointing your verifier hostname to your AWS Elastic IP:
+Kanga-Route stops after the SMTP `RCPT TO` check and never sends a message
+body, but recipient servers still inspect the connecting IP and SMTP identity.
 
-| Record Type | Name / Host | Target Value | Description |
-|---|---|---|---|
-| **`A`** | `verifier` (or `verifier.yourdomain.com`) | `<YOUR_AWS_ELASTIC_IP>` | Maps domain hostname to your EC2 Elastic IP |
+Before a production run:
 
----
+1. Allocate an Elastic IP for the appliance.
+2. Create an A record such as `verifier.example.com` pointing to that IP.
+3. Configure the Elastic IP's reverse DNS/PTR to the same hostname.
+4. Authorize the IP for the envelope address, such as
+   `verify@example.com`, in your existing SPF record.
+5. Ask AWS to remove the outbound port 25 restriction for the account, region,
+   and Elastic IP.
 
-### 2. Reverse DNS / PTR Record (Forward-Confirmed Reverse DNS - FCrDNS)
-Recipient mail servers verify that your Elastic IP resolves back to your domain hostname.
-1. Open the [AWS EC2 Console > Elastic IPs](https://console.aws.amazon.com/ec2/v2/home#Addresses:).
-2. Select your allocated Elastic IP.
-3. Click **Actions > Edit reverse DNS**.
-4. Enter `verifier.yourdomain.com` and click **Update**.
+Then configure the exact hostname and address as `SMTP_HELO_DOMAIN` and
+`SMTP_MAIL_FROM`. The shipped `.invalid` values are fail-safe placeholders;
+the engine refuses to run until they are replaced.
 
----
+## 3. Launch the appliance
 
-### 3. SPF Record (Sender Policy Framework TXT Record)
-Authorize your AWS Elastic IP to announce `verify@yourdomain.com` during the SMTP handshake:
+Use a private AMI candidate built from the current commit, or a later promoted
+release. Pass that appliance AMI ID to the Pulumi stack:
 
-- **If you do NOT have an existing SPF record**:
-  Create a `TXT` record on your root domain (`yourdomain.com`):
-  ```text
-  v=spf1 ip4:<YOUR_AWS_ELASTIC_IP> ~all
-  ```
-- **If you ALREADY have an SPF record** (e.g. for Google Workspace or Microsoft 365):
-  Append `ip4:<YOUR_AWS_ELASTIC_IP>` into your existing record:
-  ```text
-  v=spf1 include:_spf.google.com ip4:<YOUR_AWS_ELASTIC_IP> ~all
-  ```
+```bash
+cd infra
+python -m venv venv
+. venv/bin/activate
+pip install -r requirements.txt
+pulumi stack init dev
+pulumi config set aws:region us-east-1
+pulumi config set kanga-route-infra:amiId ami-0123456789abcdef0
+pulumi up
+```
 
----
+`amiId` is required. The stack deliberately refuses to substitute a plain
+Ubuntu image. SSH is disabled by default; use SSM Session Manager. If SSH is
+required, set a restricted CIDR such as
+`pulumi config set kanga-route-infra:sshCidr 203.0.113.10/32`.
 
-### 4. AWS Outbound Port 25 Unblock Request
-AWS blocks outbound TCP Port 25 by default on all EC2 accounts.
-1. Open the AWS Support Console and navigate to **Request to remove email sending limitations**.
-2. Select your AWS Region (`us-east-1`) and Elastic IP.
-3. State: *"Outbound Port 25 is required for CRM email verification socket handshakes on our appliance."*
+### Configure the instance
 
----
+Connect with SSM Session Manager (recommended), EC2 Instance Connect when it is
+available, or restricted SSH. Start from the installed template:
 
-## Phase 3: Launch & Connection Methods
+```bash
+sudo cp /opt/kanga-route/.env.example /opt/kanga-route/.env
+sudo chmod 600 /opt/kanga-route/.env
+sudoedit /opt/kanga-route/.env
+```
 
-### Method 1: Zero-Touch Automated Launch via User Data (Recommended — No Terminal Needed!)
+At minimum, set:
 
-You can pass your HubSpot credentials directly during instance launch so the VM boots up 100% pre-configured and begins scheduled verification without needing to log in:
+```dotenv
+HUBSPOT_ACCESS_TOKEN=pat-na1-your-private-app-token
+SMTP_HELO_DOMAIN=verifier.example.com
+SMTP_MAIL_FROM=verify@example.com
+USE_LOCAL_DB=true
+DYNAMODB_TABLE_NAME=KangaRouteCache
+AWS_REGION=us-east-1
+BATCH_SIZE=100
+REVERIFY_AFTER_DAYS=30
+CACHE_TTL_DAYS=30
+UNKNOWN_RETRY_AFTER_HOURS=48
+```
 
-1. Click [**Launch Appliance in AWS Console 🚀**](https://console.aws.amazon.com/ec2/v2/home?region=us-east-1#LaunchInstances:amiId=ami-0621206b8c7bfc85c) (AMI ID: **`ami-0621206b8c7bfc85c`**).
-2. Expand **Advanced Details** at the bottom of the launch page.
-3. Paste the following script into **User Data**:
-   ```bash
-   #!/bin/bash
-   cat << 'EOF' > /opt/kanga-route/.env
-   HUBSPOT_ACCESS_TOKEN=pat-na1-your-actual-hubspot-token
-   DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
-   DYNAMODB_TABLE_NAME=KangaRouteCache
-   AWS_REGION=us-east-1
-   AWS_ACCESS_KEY_ID=dummy
-   AWS_SECRET_ACCESS_KEY=dummy
-   EOF
-   systemctl restart kanga-route.service
-   ```
-4. Click **Launch Instance**. The appliance will automatically initialize and execute its scheduled verification runs.
+Do not put a HubSpot token in EC2 User Data: instance User Data is retrievable
+through AWS APIs. After saving the file:
 
----
+```bash
+sudo systemctl restart kanga-route.service
+sudo systemctl restart kanga-route-run.timer
+sudo kanga-route run
+```
 
-### Method 2: EC2 Instance Connect (1-Click Web Console Terminal)
+The one-shot run exits nonzero when required configuration, DynamoDB, HubSpot,
+or CRM writeback fails. A successful run writes results back to HubSpot.
 
-No SSH key pairs, local terminal commands, or open inbound ports are required.
+### Managed DynamoDB mode
 
-1. Open the [AWS EC2 Console](https://console.aws.amazon.com/ec2/).
-2. Select your `Kanga-Route-Appliance` instance and click **Connect** in the top menu.
-3. Choose the **EC2 Instance Connect** tab.
-4. Click **Connect**. A terminal window will open directly in your web browser.
-5. Update your token:
-   ```bash
-   sudo nano /opt/kanga-route/.env
-   ```
-6. Trigger a verification run:
-   ```bash
-   kanga-route run
-   ```
+The default local mode uses the persistent DynamoDB Local volume. To use
+managed DynamoDB and the EC2 instance role instead:
 
----
+```dotenv
+USE_LOCAL_DB=false
+DYNAMODB_ENDPOINT_URL=
+DYNAMODB_TABLE_NAME=KangaRouteCache
+AWS_REGION=us-east-1
+```
 
-### Method 3: AWS Systems Manager (SSM) Session Manager (Browser Terminal)
+The table is created on first use and its `ttl` attribute is enabled for
+automatic expiry. Cloud appliance mode requires an attached EC2 IAM instance
+role with DynamoDB table and TTL permissions. Compose deliberately does not
+forward `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or
+`AWS_SESSION_TOKEN` from the host.
 
-For enterprise security environments where inbound SSH Port 22 is completely closed:
+## 4. Operate the appliance
 
-1. In the AWS EC2 Console, select your `Kanga-Route-Appliance` instance.
-2. Click **Connect > Session Manager > Connect**.
-3. A secure browser shell will open. Switch to the `ubuntu` user:
-   ```bash
-   sudo su - ubuntu
-   kanga-route status
-   ```
+The Packer image enables a persistent daily systemd timer. Missed runs execute
+after the next boot, and randomized delay avoids every appliance starting at
+exactly midnight.
 
----
+```bash
+# Run immediately and wait for completion
+sudo kanga-route run
 
-### Method 4: Standard SSH Connection
+# Inspect cache stack, service, timer, and next execution
+kanga-route status
 
-1. Connect via terminal:
-   ```bash
-   ssh -i /path/to/key.pem ubuntu@<INSTANCE_ELASTIC_IP>
-   ```
-2. Edit configuration:
-   ```bash
-   sudo nano /opt/kanga-route/.env
-   ```
-3. Trigger sync:
-   ```bash
-   kanga-route run
-   ```
+# Follow verification history and live logs in journald
+sudo kanga-route logs
 
----
+# Change to 02:00 UTC daily (systemd OnCalendar syntax)
+sudo kanga-route schedule "*-*-* 02:00:00 UTC"
+```
 
-## Phase 4: Host CLI Reference (`kanga-route`)
+Only one verification run can execute at a time; a system-level file lock
+prevents overlapping manual and timer invocations.
 
-The host control plane CLI abstracts container operations:
+## 5. Interpret results safely
 
-- **`kanga-route run`**: Triggers an immediate verification execution batch against HubSpot.
-- **`kanga-route status`**: Displays Docker container health and active systemd/cron schedules.
-- **`kanga-route logs`**: Tails live verification engine logs (`docker compose logs -f engine`).
-- **`kanga-route schedule "<cron_expr>"`**: Configures automated recurring execution (e.g., `kanga-route schedule "0 2 * * *"` for 2:00 AM UTC daily).
+- `Invalid` is reserved for authoritative syntax, disposable-domain, no-mail,
+  or explicit recipient-not-found evidence.
+- `Catch-All` means the server accepted a randomized nonexistent recipient.
+- `Unknown` covers DNS timeouts, greylisting, connection failures, ambiguous
+  SMTP policy rejections, and other transient outcomes. These results are
+  visible in HubSpot but never cached; the retry cooldown keeps them eligible
+  later without letting the same cohort monopolize every scheduled batch.
+- Multiple MX hosts are tried for transient connection failures.

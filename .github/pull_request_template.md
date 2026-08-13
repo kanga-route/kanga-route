@@ -4,7 +4,7 @@
 
 ## Documentation
 
-- [ ] `docs/ROADMAP.md` is updated for this feature, or the summary explains why it is not applicable
+- [ ] `docs/roadmap.md` is updated for this feature, or the summary explains why it is not applicable
 - [ ] Any new or superseded durable decision updates an ADR and the grouped index, or is not applicable
 
 ## Security and data handling

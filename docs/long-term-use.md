@@ -1,90 +1,52 @@
-# Kanga-Route Long-Term Use & Operations Guide 🦘
+# Long-Term Operations
 
-This guide outlines operational best practices, IP reputation management, long-term database caching, log rotation, and routine maintenance for running the Kanga-Route Virtual Appliance in production.
+## IP reputation
 
----
+Keep the configured `SMTP_HELO_DOMAIN`, forward A record, Elastic IP PTR
+record, and `SMTP_MAIL_FROM`/SPF identity aligned. AWS must allow outbound
+port 25. Start with conservative batches and increase them only after observing
+recipient-server behavior.
 
-## 1. IP Reputation & Warm-Up Best Practices
+Kanga-Route limits total concurrent probes and retries transient failures.
+Greylisting and ambiguous policy rejections are `Unknown`, not `Invalid`.
+Unknown results are not cached. `UNKNOWN_RETRY_AFTER_HOURS` defaults to 48,
+preventing the same oldest transient cohort from consuming every daily batch
+while preserving later retries.
 
-Because Kanga-Route performs direct TCP Port 25 SMTP socket handshakes against major mailbox providers (Google, Microsoft, Yahoo, Proton, iCloud), preserving the Elastic IP address reputation is critical.
+## Cache lifecycle
 
-### Key Rules for Host IP Health
-1. **Maintain Valid Reverse DNS (rDNS / PTR Record):**
-   - Ensure `verifier.yourdomain.com` matches the Reverse DNS setting on your AWS Elastic IP.
-   - Mail servers automatically drop handshakes from IPs lacking valid PTR records.
-2. **Implement Batch Rate Limiting:**
-   - Do not verify more than **5,000–10,000 new emails per day** from a fresh Elastic IP.
-   - Gradually warm up new Elastic IPs over 2–3 weeks if processing large CRM lists (>50,000 contacts).
-3. **Handle Greylisting & 450 Responses:**
-   - Some mail servers return `450` or `451` temporary greylisting errors on initial connections.
-   - Kanga-Route automatically categorizes these as `Catch-All` with reason `Greylisted` so they do not trigger aggressive retries.
+`CACHE_TTL_DAYS` controls definitive-result cache lifetime and defaults to 30.
+Kanga-Route enables DynamoDB TTL on the `ttl` attribute. It also rejects stale
+entries at read time because DynamoDB deletion is asynchronous.
 
----
+`REVERIFY_AFTER_DAYS` controls when contacts with an old
+`last_verified` datetime become eligible again. Keep it aligned with, or
+longer than, the cache TTL so a stale HubSpot contact is not immediately served
+the same cached result.
 
-## 2. Database & Cache Maintenance (DynamoDB)
+For managed DynamoDB, set `USE_LOCAL_DB=false`, leave
+`DYNAMODB_ENDPOINT_URL` and static AWS credentials empty, and grant the EC2
+instance role access to the configured table.
 
-Refers to **ADR 0002**. Kanga-Route uses DynamoDB to cache verification results and prevent redundant SMTP socket handshakes.
+## Logs and schedules
 
-### Maintenance Tasks
-- **TTL Expiration (Default 30 Days):**
-  - Cached verification results automatically expire after 30 days.
-  - If your CRM contact list changes rapidly, you can adjust the TTL window in `DynamoDBCacheStore`.
-- **Switching to Cloud DynamoDB (Scale Up):**
-  - To transition from local sidecar (`dynamodb-local`) to a managed AWS DynamoDB table for enterprise persistence, update `/opt/kanga-route/.env`:
-    ```env
-    USE_LOCAL_DB=false
-    # Remove DYNAMODB_ENDPOINT_URL to route directly to AWS DynamoDB
-    DYNAMODB_TABLE_NAME=KangaRouteCache
-    ```
-
----
-
-## 3. Log Rotation & Disk Monitoring
-
-The Kanga-Route appliance logs execution summaries to container stdout and `/var/log/kanga-route.log`.
-
-### Log Rotation Setup (`/etc/logrotate.d/kanga-route`)
-Ensure `/var/log/kanga-route.log` is rotated automatically to prevent disk space exhaustion:
-```text
-/var/log/kanga-route.log {
-    daily
-    rotate 14
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0640 root root
-}
-```
-
----
-
-## 4. Upgrading the Appliance
-
-When new engine updates or security patches are released:
-
-1. **Pull Latest Code & Rebuild Containers:**
-   ```bash
-   cd /opt/kanga-route
-   git pull origin master
-   docker compose build engine
-   ```
-2. **Re-Bake AMI for CI/CD Pipelines:**
-   Run Packer to output an updated production AMI:
-   ```bash
-   packer build packer/kanga-route.pkr.hcl
-   ```
-
----
-
-## 5. Monitoring & Health Checks
-
-Use the built-in host CLI tool to verify system health:
+Runs are oneshot systemd services, and logs remain in journald even though the
+engine container is removed afterward:
 
 ```bash
-# Check stack health & active cron schedule
 kanga-route status
-
-# Tail real-time execution logs
-kanga-route logs
+sudo kanga-route logs
+sudo kanga-route schedule "*-*-* 02:00:00 UTC"
 ```
+
+Configure journald retention according to the host's disk and compliance
+requirements. A file lock prevents overlapping scheduled and manual runs.
+
+## Upgrades
+
+Treat an AMI as immutable. The bakery only builds private candidates. Launch
+the candidate in a staging account, complete a configuration and HubSpot smoke
+test, and then promote that exact AMI—without rebuilding it—through a separate
+manual AWS release operation before broader sharing or production rollout.
+Automating exact-candidate promotion is post-MVP work. The workflow does not
+rewrite release documentation or publish builds automatically.

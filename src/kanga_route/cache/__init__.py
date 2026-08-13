@@ -1,5 +1,5 @@
 """Cache module subpackage."""
 
-from kanga_route.cache.dynamodb import DynamoDBCacheStore
+from kanga_route.cache.dynamodb import CacheError, DynamoDBCacheStore
 
-__all__ = ["DynamoDBCacheStore"]
+__all__ = ["CacheError", "DynamoDBCacheStore"]
