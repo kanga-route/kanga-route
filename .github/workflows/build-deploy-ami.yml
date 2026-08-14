@@ -1,0 +1,151 @@
+name: Build and Deploy Kanga-Route AMI
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region in which to build and publish the AMI
+        required: true
+        default: us-east-1
+        type: string
+      publication_mode:
+        description: Candidate stays private; shared uses the account-ID secret; public is available to everyone
+        required: true
+        default: candidate
+        type: choice
+        options:
+          - candidate
+          - shared
+          - public
+      confirm_publication:
+        description: I understand that public makes this AMI launchable by every AWS account
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: kanga-route-ami-${{ inputs.aws_region }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Validate release request
+    runs-on: ubuntu-latest
+    outputs:
+      builder_role_arn: ${{ steps.roles.outputs.builder_role_arn }}
+      publisher_role_arn: ${{ steps.roles.outputs.publisher_role_arn }}
+
+    steps:
+      - name: Require master and configured OIDC roles
+        id: roles
+        env:
+          BUILDER_ROLE_ARN: ${{ vars.AWS_AMI_BUILDER_ROLE_ARN }}
+          PUBLISHER_ROLE_ARN: ${{ vars.AWS_AMI_PUBLISHER_ROLE_ARN }}
+          AWS_REGION: ${{ inputs.aws_region }}
+        run: |
+          [[ "${GITHUB_REF}" == "refs/heads/master" ]] || {
+            echo "Run this release workflow from master so OIDC trust and source provenance agree" >&2
+            exit 1
+          }
+          [[ "${AWS_REGION}" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]$ ]] || {
+            echo "Invalid AWS region: ${AWS_REGION}" >&2
+            exit 1
+          }
+          [[ -n "${BUILDER_ROLE_ARN}" ]] || {
+            echo "Repository variable AWS_AMI_BUILDER_ROLE_ARN is required" >&2
+            exit 1
+          }
+          if [[ -z "${PUBLISHER_ROLE_ARN}" ]]; then
+            PUBLISHER_ROLE_ARN="${BUILDER_ROLE_ARN}"
+          fi
+          echo "builder_role_arn=${BUILDER_ROLE_ARN}" >> "${GITHUB_OUTPUT}"
+          echo "publisher_role_arn=${PUBLISHER_ROLE_ARN}" >> "${GITHUB_OUTPUT}"
+
+  bakery:
+    name: Bake exact candidate
+    needs: preflight
+    uses: ./.github/workflows/packer-build.yml
+    with:
+      aws_region: ${{ inputs.aws_region }}
+      aws_role_arn: ${{ needs.preflight.outputs.builder_role_arn }}
+
+  publish:
+    name: Publish exact candidate
+    needs:
+      - preflight
+      - bakery
+    uses: ./.github/workflows/publish-ami.yml
+    with:
+      ami_id: ${{ needs.bakery.outputs.ami_id }}
+      aws_region: ${{ inputs.aws_region }}
+      aws_role_arn: ${{ needs.preflight.outputs.publisher_role_arn }}
+      publication_mode: ${{ inputs.publication_mode }}
+      confirm_publication: ${{ inputs.confirm_publication }}
+      source_sha: ${{ github.sha }}
+    secrets:
+      share_account_ids: ${{ secrets.AWS_AMI_SHARE_ACCOUNT_IDS }}
+
+  catalog:
+    name: Update AMI catalog
+    needs:
+      - bakery
+      - publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Record exact published candidate
+        env:
+          AMI_ID: ${{ needs.bakery.outputs.ami_id }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PUBLICATION_MODE: ${{ inputs.publication_mode }}
+          SOURCE_SHA: ${{ github.sha }}
+          BUILD_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/ami_release.py record \
+            --catalog docs/ami-catalog.json \
+            --document docs/ami-catalog.md \
+            --ami-id "${AMI_ID}" \
+            --region "${AWS_REGION}" \
+            --visibility "${PUBLICATION_MODE}" \
+            --source-sha "${SOURCE_SHA}" \
+            --build-run-url "${BUILD_RUN_URL}" \
+            --published-at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Commit catalog update
+        env:
+          AMI_ID: ${{ needs.bakery.outputs.ami_id }}
+        run: |
+          if git diff --quiet -- docs/ami-catalog.json docs/ami-catalog.md; then
+            echo "AMI catalog already contains this release."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- docs/ami-catalog.json docs/ami-catalog.md
+          git commit -m "docs: record AMI ${AMI_ID} [skip ci]"
+          git push origin HEAD:master
+
+      - name: Display recorded AMI
+        env:
+          AMI_ID: ${{ needs.bakery.outputs.ami_id }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PUBLICATION_MODE: ${{ inputs.publication_mode }}
+        run: |
+          {
+            echo "## Kanga-Route AMI"
+            echo
+            echo "- Region: \`${AWS_REGION}\`"
+            echo "- AMI: \`${AMI_ID}\`"
+            echo "- Availability: \`${PUBLICATION_MODE}\`"
+            echo
+            echo "The repository AMI catalog now points to this exact image."
+          } >> "${GITHUB_STEP_SUMMARY}"

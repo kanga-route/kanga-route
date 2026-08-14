@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "images": [
+    {
+      "region": "us-east-1",
+      "ami_id": "ami-0bba53439d5325433",
+      "visibility": "candidate",
+      "source_sha": "972474d5094bc49da5d7dd47e713972ae0d7858f",
+      "build_run_url": "https://github.com/kanga-route/kanga-route/actions/runs/31763152894",
+      "published_at": "2026-08-14T02:24:57Z"
+    }
+  ]
+}

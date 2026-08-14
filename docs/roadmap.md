@@ -469,7 +469,7 @@ These require an ADR and explicit maintainer approval:
 - Changes to status or reason meanings.
 - New network probes or material SMTP behavior changes.
 - Database migrations and compatibility guarantees.
-- Public AMI, release signing, and artifact-retention policy.
+- Multi-region public AMI replication, release signing, and long-term artifact-retention policy.
 
 ## Explicitly out of scope for now
 

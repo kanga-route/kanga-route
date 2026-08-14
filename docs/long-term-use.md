@@ -44,9 +44,12 @@ requirements. A file lock prevents overlapping scheduled and manual runs.
 
 ## Upgrades
 
-Treat an AMI as immutable. The bakery only builds private candidates. Launch
-the candidate in a staging account, complete a configuration and HubSpot smoke
-test, and then promote that exact AMI—without rebuilding it—through a separate
-manual AWS release operation before broader sharing or production rollout.
-Automating exact-candidate promotion is post-MVP work. The workflow does not
-rewrite release documentation or publish builds automatically.
+Treat an AMI as immutable. The parent release workflow builds a private
+candidate, reports its exact ID, and pauses shared or public promotion at the
+`ami-publication` environment. Launch the candidate in a staging environment,
+complete the smoke checklist, and approve only that exact AMI. The publication
+workflow changes launch permissions without rebuilding, then the parent records
+the image and source revision in the regional AMI catalog.
+
+See [Build and publish Kanga-Route AMIs](ami-release-workflow.md) for the
+release modes, approval gate, and rollback-safe operating procedure.

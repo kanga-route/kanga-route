@@ -118,7 +118,7 @@ values use the fictional `example.com`; replace every one with your own value.
 | Stack field | What it means | Where to find or choose it | Example |
 | --- | --- | --- | --- |
 | **Region** | AWS location for the entire stack. It is selected in the console, not entered into the template. | Console region selector, upper right. It must contain the AMI. | `us-east-1` |
-| **Kanga-Route AMI ID** | Machine image used to launch the appliance. AMI IDs are region-specific. | **EC2 → AMIs**. Change **Owned by me** to the appropriate ownership filter, select the tested Kanga-Route image, and copy **AMI ID** from Details. | `ami-0123456789abcdef0` |
+| **Kanga-Route AMI ID** | Machine image used to launch the appliance. AMI IDs are region-specific. | Open the [Kanga-Route AMI catalog](ami-catalog.md), choose the row for this exact region, and confirm its availability is `public` or that its owner shared it with your AWS account. | `ami-0123456789abcdef0` |
 | **Instance type** | CPU and memory assigned to the appliance. | Choose from the template list. Start with `t3.micro`; use `t3.small` or `t3.medium` for larger workloads. | `t3.micro` |
 | **VPC IPv4 CIDR** | Private address space for the new isolated network. | Choose an unused RFC 1918 range. The default is normally safe for a standalone deployment. | `10.42.0.0/16` |
 | **Public subnet 1 CIDR** | Slice of the VPC used by the appliance and one ALB node. | Use a non-overlapping subnet fully inside the VPC range. | `10.42.1.0/24` |
