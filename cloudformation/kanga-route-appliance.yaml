@@ -1,0 +1,660 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Kanga-Route appliance with a dedicated VPC, Systems Manager access, and an
+  optional browser UI protected by HTTPS and Amazon Cognito. The final ALB-to-
+  appliance security-group rule is intentionally left for the operator to add.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Appliance image and size
+        Parameters:
+          - AmiId
+          - InstanceType
+      - Label:
+          default: Network
+        Parameters:
+          - VpcCidr
+          - PublicSubnet1Cidr
+          - PublicSubnet2Cidr
+          - UiClientCidr
+      - Label:
+          default: Browser UI and DNS
+        Parameters:
+          - HostedZoneId
+          - UiDomainName
+          - CognitoDomainPrefix
+          - AdminEmail
+      - Label:
+          default: SMTP identity
+        Parameters:
+          - SmtpHeloDomain
+          - SmtpMailFrom
+    ParameterLabels:
+      AmiId:
+        default: Kanga-Route AMI ID
+      VpcCidr:
+        default: VPC IPv4 CIDR
+      PublicSubnet1Cidr:
+        default: Public subnet 1 IPv4 CIDR
+      PublicSubnet2Cidr:
+        default: Public subnet 2 IPv4 CIDR
+      UiClientCidr:
+        default: Browsers allowed to reach the load balancer
+      HostedZoneId:
+        default: Route 53 public hosted zone ID
+      UiDomainName:
+        default: Browser UI hostname
+      CognitoDomainPrefix:
+        default: Globally unique Cognito domain prefix
+      AdminEmail:
+        default: Initial UI administrator email
+      SmtpHeloDomain:
+        default: SMTP HELO hostname
+      SmtpMailFrom:
+        default: SMTP MAIL FROM address
+
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: >-
+      The Kanga-Route AMI shared with or owned by this account in the region
+      where this stack is being created.
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+    Description: EC2 instance size. t3.micro is suitable for an initial deployment.
+
+  VpcCidr:
+    Type: String
+    Default: 10.42.0.0/16
+    AllowedPattern: "^(10\\.(?:[0-9]{1,3}\\.){2}0/(?:1[6-9]|2[0-4])|172\\.(?:1[6-9]|2[0-9]|3[0-1])\\.[0-9]{1,3}\\.0/(?:1[6-9]|2[0-4])|192\\.168\\.[0-9]{1,3}\\.0/(?:1[6-9]|2[0-4]))$"
+    ConstraintDescription: >-
+      Enter an RFC 1918 private network such as 10.42.0.0/16. Use a /16 through /24.
+    Description: >-
+      Private IPv4 range for the new, dedicated VPC. It must contain both subnet CIDRs.
+
+  PublicSubnet1Cidr:
+    Type: String
+    Default: 10.42.1.0/24
+    AllowedPattern: "^(10\\.(?:[0-9]{1,3}\\.){2}0/2[0-8]|172\\.(?:1[6-9]|2[0-9]|3[0-1])\\.[0-9]{1,3}\\.0/2[0-8]|192\\.168\\.[0-9]{1,3}\\.0/2[0-8])$"
+    ConstraintDescription: Enter a private /20 through /28 subnet, such as 10.42.1.0/24.
+    Description: Public subnet in the first Availability Zone. It must be inside the VPC CIDR.
+
+  PublicSubnet2Cidr:
+    Type: String
+    Default: 10.42.2.0/24
+    AllowedPattern: "^(10\\.(?:[0-9]{1,3}\\.){2}0/2[0-8]|172\\.(?:1[6-9]|2[0-9]|3[0-1])\\.[0-9]{1,3}\\.0/2[0-8]|192\\.168\\.[0-9]{1,3}\\.0/2[0-8])$"
+    ConstraintDescription: Enter a private /20 through /28 subnet, such as 10.42.2.0/24.
+    Description: >-
+      Public subnet in the second Availability Zone. It must be inside the VPC CIDR
+      and must not overlap subnet 1.
+
+  UiClientCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/(?:[0-9]|[12][0-9]|3[0-2])$"
+    ConstraintDescription: Enter an IPv4 CIDR such as 203.0.113.10/32 or 0.0.0.0/0.
+    Description: >-
+      CIDR allowed to reach the HTTPS load balancer. This never grants direct access
+      to the EC2 instance. Use your public-IP/32 for a private test or 0.0.0.0/0 for
+      an internet-facing sign-in page.
+
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: >-
+      ID of the existing public Route 53 hosted zone that contains UiDomainName.
+
+  UiDomainName:
+    Type: String
+    AllowedPattern: "^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+    ConstraintDescription: Enter a lowercase fully qualified hostname, such as route.example.com.
+    Description: >-
+      Fully qualified browser UI hostname. CloudFormation creates its certificate and
+      Route 53 record.
+
+  CognitoDomainPrefix:
+    Type: String
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$"
+    ConstraintDescription: Use 3-63 lowercase letters, numbers, or internal hyphens.
+    Description: >-
+      Globally unique prefix for the Cognito hosted login domain. A useful value is
+      your organization name followed by kanga-route.
+
+  AdminEmail:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+    ConstraintDescription: Enter a deliverable email address.
+    Description: Cognito sends the initial administrator invitation to this address.
+
+  SmtpHeloDomain:
+    Type: String
+    AllowedPattern: "^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+    ConstraintDescription: Enter a lowercase fully qualified hostname, such as verifier.example.com.
+    Description: >-
+      Hostname Kanga-Route presents to receiving mail servers. After deployment, create
+      its forward DNS record and matching reverse DNS for the appliance Elastic IP.
+
+  SmtpMailFrom:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+    ConstraintDescription: Enter an email address at a domain you control, such as verify@example.com.
+    Description: Envelope sender used by the verifier. No mailbox password is requested.
+
+Resources:
+  ApplianceVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-igw"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref ApplianceVpc
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet1Cidr
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref ApplianceVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet2Cidr
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref ApplianceVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-2"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ApplianceVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public"
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  ApplianceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: >-
+        Kanga-Route appliance. No inbound access is enabled by the template.
+      VpcId: !Ref ApplianceVpc
+      SecurityGroupEgress:
+        - Description: SMTP verification traffic
+          IpProtocol: tcp
+          FromPort: 25
+          ToPort: 25
+          CidrIp: 0.0.0.0/0
+        - Description: DNS over UDP through the VPC resolver
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+        - Description: DNS over TCP through the VPC resolver
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+        - Description: HTTP for package and container retrieval
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - Description: HTTPS APIs and Systems Manager
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-appliance"
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTPS entry point for the Kanga-Route UI
+      VpcId: !Ref ApplianceVpc
+      SecurityGroupIngress:
+        - Description: Redirect HTTP to HTTPS
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref UiClientCidr
+        - Description: Cognito-protected browser UI
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref UiClientCidr
+      SecurityGroupEgress:
+        - Description: Proxy to the appliance private HTTP listener
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          DestinationSecurityGroupId: !GetAtt ApplianceSecurityGroup.GroupId
+        - Description: Cognito HTTPS endpoints
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: DNS over UDP through the VPC resolver
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+        - Description: DNS over TCP through the VPC resolver
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-load-balancer"
+
+  ApplianceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-appliance"
+
+  ApplianceInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ApplianceRole
+
+  ApplianceInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: DefaultPublicRoute
+    Properties:
+      IamInstanceProfile: !Ref ApplianceInstanceProfile
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 1
+        HttpTokens: required
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          DeviceIndex: "0"
+          GroupSet:
+            - !GetAtt ApplianceSecurityGroup.GroupId
+          SubnetId: !Ref PublicSubnet1
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeSize: 16
+            VolumeType: gp3
+      UserData:
+        Fn::Base64: !Sub |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+
+          export DEBIAN_FRONTEND=noninteractive
+          retry apt-get update
+          retry apt-get install -y --no-install-recommends nginx
+
+          install -m 0600 -o root -g root /dev/null /opt/kanga-route/.env
+          sed -n '/^[A-Z_][A-Z0-9_]*=/p' /opt/kanga-route/.env.example > /opt/kanga-route/.env
+          sed -i \
+            -e 's|^SMTP_HELO_DOMAIN=.*|SMTP_HELO_DOMAIN=${SmtpHeloDomain}|' \
+            -e 's|^SMTP_MAIL_FROM=.*|SMTP_MAIL_FROM=${SmtpMailFrom}|' \
+            -e 's|^USE_LOCAL_DB=.*|USE_LOCAL_DB=true|' \
+            -e 's|^ENABLE_WEB_UI=.*|ENABLE_WEB_UI=true|' \
+            -e 's|^KANGA_ROUTE_WEB_PORT=.*|KANGA_ROUTE_WEB_PORT=8080|' \
+            -e 's|^AWS_REGION=.*|AWS_REGION=${AWS::Region}|' \
+            /opt/kanga-route/.env
+
+          cat > /etc/nginx/sites-available/kanga-route <<'NGINX'
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+              server_name _;
+              access_log off;
+              server_tokens off;
+              client_max_body_size 1m;
+
+              location / {
+                  proxy_pass http://127.0.0.1:8080;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto https;
+                  proxy_set_header X-Forwarded-Port 443;
+                  proxy_connect_timeout 5s;
+                  proxy_read_timeout 60s;
+              }
+          }
+          NGINX
+
+          rm -f /etc/nginx/sites-enabled/default
+          ln -sfn /etc/nginx/sites-available/kanga-route /etc/nginx/sites-enabled/kanga-route
+          nginx -t
+          systemctl enable --now nginx
+
+          systemctl disable --now kanga-route-run.timer || true
+          systemctl enable kanga-route.service
+          systemctl restart kanga-route.service
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-appliance"
+
+  ApplianceElasticIp:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref ApplianceInstance
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-appliance"
+
+  UiLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt LoadBalancerSecurityGroup.GroupId
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-ui"
+
+  UiTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /healthz
+      HealthCheckPort: traffic-port
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200"
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      Targets:
+        - Id: !Ref ApplianceInstance
+          Port: 80
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref ApplianceVpc
+
+  UiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref UiDomainName
+      DomainValidationOptions:
+        - DomainName: !Ref UiDomainName
+          HostedZoneId: !Ref HostedZoneId
+      ValidationMethod: DNS
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-ui"
+
+  UiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt UiLoadBalancer.DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: !GetAtt UiLoadBalancer.CanonicalHostedZoneID
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref UiDomainName
+      Type: A
+
+  UiUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailMessage: >-
+            Your Kanga-Route username is {username} and temporary password is {####}.
+            Sign in at the appliance URL shown in the CloudFormation Outputs tab.
+          EmailSubject: Your Kanga-Route appliance invitation
+      AutoVerifiedAttributes:
+        - email
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      MfaConfiguration: "ON"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 14
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 7
+      UsernameAttributes:
+        - email
+      UserPoolName: !Sub "${AWS::StackName}-ui"
+
+  UiUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+      CallbackURLs:
+        - !Sub "https://${UiDomainName}/oauth2/idpresponse"
+      GenerateSecret: true
+      LogoutURLs:
+        - !Sub "https://${UiDomainName}/"
+      PreventUserExistenceErrors: ENABLED
+      RefreshTokenValidity: 1
+      SupportedIdentityProviders:
+        - COGNITO
+      UserPoolId: !Ref UiUserPool
+
+  UiUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UiUserPool
+
+  InitialAdministrator:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      DesiredDeliveryMediums:
+        - EMAIL
+      ForceAliasCreation: false
+      UserAttributes:
+        - Name: email
+          Value: !Ref AdminEmail
+        - Name: email_verified
+          Value: "true"
+      UserPoolId: !Ref UiUserPool
+      Username: !Ref AdminEmail
+
+  UiHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Host: "#{host}"
+            Path: "/#{path}"
+            Port: "443"
+            Protocol: HTTPS
+            Query: "#{query}"
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref UiLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  UiHttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref UiCertificate
+      DefaultActions:
+        - AuthenticateCognitoConfig:
+            OnUnauthenticatedRequest: authenticate
+            Scope: openid email
+            SessionCookieName: AWSELBAuthSessionCookie
+            SessionTimeout: 3600
+            UserPoolArn: !GetAtt UiUserPool.Arn
+            UserPoolClientId: !Ref UiUserPoolClient
+            UserPoolDomain: !Ref UiUserPoolDomain
+          Order: 1
+          Type: authenticate-cognito
+        - Order: 2
+          TargetGroupArn: !Ref UiTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref UiLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+Outputs:
+  DeploymentRegion:
+    Description: Region selected before the stack was created.
+    Value: !Ref AWS::Region
+
+  VpcId:
+    Description: Dedicated appliance VPC.
+    Value: !Ref ApplianceVpc
+
+  PublicSubnet1Id:
+    Description: Public subnet in the first Availability Zone.
+    Value: !Ref PublicSubnet1
+
+  PublicSubnet2Id:
+    Description: Public subnet in the second Availability Zone.
+    Value: !Ref PublicSubnet2
+
+  ApplianceInstanceId:
+    Description: EC2 instance ID. Use it when starting a Systems Manager session.
+    Value: !Ref ApplianceInstance
+
+  ApplianceElasticIpAddress:
+    Description: >-
+      Stable outbound IPv4 address. Create forward and reverse DNS for SmtpHeloDomain.
+    Value: !Ref ApplianceElasticIp
+
+  ApplianceSecurityGroupId:
+    Description: >-
+      Final activation gate: add inbound TCP 80 with the load balancer security group
+      as its source. Never add 0.0.0.0/0 and never expose port 8080.
+    Value: !GetAtt ApplianceSecurityGroup.GroupId
+
+  LoadBalancerSecurityGroupId:
+    Description: Use this security group as the source of the final appliance inbound rule.
+    Value: !GetAtt LoadBalancerSecurityGroup.GroupId
+
+  LoadBalancerDnsName:
+    Description: AWS-generated load balancer hostname. Use UiUrl instead of browsing this directly.
+    Value: !GetAtt UiLoadBalancer.DNSName
+
+  UiUrl:
+    Description: Cognito-protected browser UI. It becomes healthy after the final security-group rule.
+    Value: !Sub "https://${UiDomainName}/"
+
+  CognitoUserPoolId:
+    Description: User pool that controls access to the UI.
+    Value: !Ref UiUserPool
+
+  SessionManagerCommand:
+    Description: AWS CLI command to open a shell without SSH.
+    Value: !Sub "aws ssm start-session --region ${AWS::Region} --target ${ApplianceInstance}"
+
+  PrivateUiTunnelCommand:
+    Description: >-
+      AWS CLI command for a private browser test at http://localhost:8080 before
+      enabling the load balancer security-group rule.
+    Value: !Sub >-
+      aws ssm start-session --region ${AWS::Region} --target ${ApplianceInstance}
+      --document-name AWS-StartPortForwardingSession
+      --parameters portNumber=8080,localPortNumber=8080
+
+  SmtpDnsNextStep:
+    Description: Manual DNS identity required for direct SMTP verification.
+    Value: !Sub "Create ${SmtpHeloDomain} A ${ApplianceElasticIp}, then set the Elastic IP reverse DNS to ${SmtpHeloDomain}."

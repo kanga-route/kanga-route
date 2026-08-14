@@ -62,6 +62,13 @@ Before the first production run you must:
 Follow [the setup and operations guide](docs/setup.md) for exact property types,
 Pulumi configuration, cache modes, schedules, and result semantics.
 
+For a guided deployment into a new AWS account, use the
+[beginner AWS appliance deployment guide](docs/aws-appliance-deployment.md) and
+its companion
+[CloudFormation template](cloudformation/kanga-route-appliance.yaml). The stack
+creates a dedicated VPC with configurable CIDRs and a Cognito-protected HTTPS
+path to the browser UI.
+
 ## Local development
 
 ```bash
@@ -91,6 +98,7 @@ HubSpot token and public SMTP identity are configured.
 ## Documentation
 
 - [Setup and operations](docs/setup.md)
+- [Beginner AWS and CloudFormation deployment](docs/aws-appliance-deployment.md)
 - [Architecture](docs/architecture.md)
 - [Browser console](docs/browser-console.md)
 - [HubSpot user story and workflows](docs/hubspot-user-story.md)
@@ -113,6 +121,7 @@ HubSpot token and public SMTP identity are configured.
 ├── tests/
 ├── packer/
 ├── infra/
+├── cloudformation/
 └── docs/
 ```
 
