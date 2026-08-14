@@ -39,6 +39,9 @@ venv/
 .venv/
 env/
 .env_python/
+browser-tests/node_modules/
+browser-tests/playwright-report/
+browser-tests/test-results/
 
 # =========================
 # Infrastructure / Build Tools

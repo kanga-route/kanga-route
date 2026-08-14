@@ -112,6 +112,35 @@ sudo kanga-route run
 The one-shot run exits nonzero when required configuration, DynamoDB, HubSpot,
 or CRM writeback fails. A successful run writes results back to HubSpot.
 
+### Enable the browser console
+
+The browser-based single-address console is disabled by default. To opt in,
+add the following to `/opt/kanga-route/.env` and restart the stack:
+
+```dotenv
+ENABLE_WEB_UI=true
+KANGA_ROUTE_WEB_PORT=8080
+```
+
+```bash
+sudo systemctl restart kanga-route.service
+```
+
+The port is published only on appliance loopback. Use SSM port forwarding and
+open `http://127.0.0.1:8080/` on the operator workstation. Do not add an EC2
+ingress rule or change the Compose address binding. This first console has no
+authentication endpoint; any non-loopback or authenticated deployment is
+blocked until the TLS/authentication design is complete.
+
+For one verification without a browser, run:
+
+```bash
+sudo kanga-route verify person@example.com
+```
+
+See [Browser Console](browser-console.md) for the SSM command, API contract,
+limits, statuses, reasons, and security behavior.
+
 ### Managed DynamoDB mode
 
 The default local mode uses the persistent DynamoDB Local volume. To use

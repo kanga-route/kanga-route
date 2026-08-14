@@ -21,6 +21,8 @@ It does not send email message bodies.
   the EC2 instance role; both use a 30-day default TTL.
 - A daily persistent systemd timer, manual `kanga-route` control plane,
   journald logs, and overlap protection.
+- An opt-in browser console and versioned API for one address, published only
+  on appliance loopback for SSM port forwarding.
 - A private-candidate-only Packer AMI workflow and Pulumi infrastructure that
   requires an appliance AMI and defaults to SSM-only administration.
 
@@ -59,6 +61,15 @@ python -m pytest
 docker compose config --quiet
 docker compose build engine
 docker compose run --rm --no-deps engine kanga-route-engine --help
+docker compose up -d --wait dynamodb-local
+docker compose --profile ui up -d --wait web
+# Open http://127.0.0.1:8080/
+
+docker run --rm --network host \
+  --volume "$PWD:/workspace" \
+  --workdir /workspace/browser-tests \
+  mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e \
+  /bin/bash -lc 'npm ci && npm test'
 ```
 
 A clean checkout does not require a secret `.env` merely to validate or build
@@ -69,6 +80,7 @@ HubSpot token and public SMTP identity are configured.
 
 - [Setup and operations](docs/setup.md)
 - [Architecture](docs/architecture.md)
+- [Browser console](docs/browser-console.md)
 - [HubSpot user story and workflows](docs/hubspot-user-story.md)
 - [Long-term operations](docs/long-term-use.md)
 - [Roadmap](docs/roadmap.md)

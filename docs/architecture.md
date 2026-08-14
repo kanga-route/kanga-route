@@ -5,16 +5,20 @@ addresses without sending message bodies.
 
 ```mermaid
 flowchart TD
-    Timer["systemd daily timer"] --> Run["oneshot run service + file lock"]
-    CLI["kanga-route CLI"] --> Run
-    Run --> Engine["non-root verifier container"]
-    Engine --> HubSpot["HubSpot Contacts API"]
+    Timer["systemd daily timer"] --> Batch["batch orchestration + file lock"]
+    CLI["kanga-route run"] --> Batch
+    SingleCLI["kanga-route verify"] --> Single["single-verification service"]
+    Browser["browser via SSM tunnel"] --> Web["loopback-published web container"]
+    Web --> Single
+    Batch --> Engine["verification engine"]
+    Single --> Engine
+    Batch --> HubSpot["HubSpot Contacts API"]
     Engine --> DNS["DNS resolvers"]
     Engine --> MX["Recipient MX servers: TCP 25"]
-    Engine --> Cache{"Cache mode"}
+    Batch --> Cache{"Cache mode"}
+    Single --> Cache
     Cache --> Local["DynamoDB Local volume"]
     Cache --> Cloud["Managed DynamoDB"]
-    Engine --> HubSpot
 ```
 
 ## Verification flow
@@ -52,12 +56,25 @@ renders booleans as lowercase strings, and converts `verified_at` to Unix epoch
 milliseconds. This keeps the verification engine reusable by future CRM,
 spreadsheet, webhook, and file adapters.
 
+## Single-address browser boundary
+
+The browser console, `POST /api/v1/verify`, and single-address CLI use one
+application service for normalization, cache policy, configuration validation,
+and verification. The API accepts only a bounded JSON envelope, uses stable
+sanitized errors, and runs blocking verification work behind explicit timeout,
+concurrency, and rate limits. Uvicorn access logging is disabled.
+
+The web container is opt-in and published as `127.0.0.1:8080` on the appliance.
+It contains no authentication mechanism and is intended only for SSM port
+forwarding. Non-loopback exposure remains blocked on the UI-04 TLS/auth design.
+
 ## Host control plane
 
 Packer installs Docker, an allowlisted application payload, three systemd
 units, and the `kanga-route` command. The stack unit starts DynamoDB Local only
-when local mode is selected. A persistent timer invokes a oneshot run service
-daily; journald retains output, and `flock` prevents overlap.
+when local mode is selected and starts the loopback browser container only when
+explicitly enabled. A persistent timer invokes a oneshot run service daily;
+journald retains output, and `flock` prevents overlap.
 
 ## AWS deployment
 

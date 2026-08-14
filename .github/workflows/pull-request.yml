@@ -55,13 +55,16 @@ jobs:
           AWS_SECRET_ACCESS_KEY: synthetic-ci-secret-key
           AWS_SESSION_TOKEN: synthetic-ci-session-token
         run: |
-          docker compose config --format json | python -c '
+          docker compose --profile ui config --format json | python -c '
           import json, sys
-          environment = json.load(sys.stdin)["services"]["engine"]["environment"]
+          services = json.load(sys.stdin)["services"]
           forbidden = {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"}
-          leaked = sorted(forbidden.intersection(environment))
-          if leaked:
-              raise SystemExit(f"Compose forwards host AWS credentials: {leaked}")
+          for service_name in ("engine", "web"):
+              leaked = sorted(forbidden.intersection(services[service_name]["environment"]))
+              if leaked:
+                  raise SystemExit(
+                      f"Compose forwards host AWS credentials to {service_name}: {leaked}"
+                  )
           '
 
       - name: Reject malformed database mode
@@ -70,12 +73,36 @@ jobs:
             echo "Malformed USE_LOCAL_DB was accepted" >&2
             exit 1
           fi
+          if ENABLE_WEB_UI=invalid KANGA_ROUTE_DIR="$PWD" bin/kanga-route _stack-up; then
+            echo "Malformed ENABLE_WEB_UI was accepted" >&2
+            exit 1
+          fi
 
       - name: Build engine image
         run: docker compose build engine
 
       - name: Smoke-test engine CLI
         run: docker compose run --rm --no-deps engine kanga-route-engine --help
+      - name: Smoke-test browser console
+        run: |
+          docker compose up -d --wait dynamodb-local
+          docker compose --profile ui up -d --wait web
+          curl --fail --silent --show-error http://127.0.0.1:8080/ \
+            | grep --fixed-strings "Single-address verification"
+          status="$(curl --silent --output /tmp/invalid-response.json \
+            --write-out '%{http_code}' \
+            --header 'content-type: application/json' \
+            --data '{"email":"not-an-email"}' \
+            http://127.0.0.1:8080/api/v1/verify)"
+          test "$status" = "422"
+          grep --fixed-strings '"code":"invalid_email"' /tmp/invalid-response.json
+      - name: Run browser interaction tests
+        run: |
+          docker run --rm --network host \
+            --volume "$PWD:/workspace" \
+            --workdir /workspace/browser-tests \
+            mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e \
+            /bin/bash -lc 'npm ci && npm test'
       - name: Smoke-test local cache
         run: |
           docker compose up -d --wait dynamodb-local

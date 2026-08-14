@@ -17,6 +17,7 @@ Usage: kanga-route <command>
 
 Commands:
   run                   Trigger an immediate verification run via systemd
+  verify <email>        Verify one address without a product integration
   status                Show the Compose stack and systemd timer status
   logs                   Tail verification-run logs from journald
   schedule <OnCalendar> Set the systemd calendar schedule (for example: daily,
@@ -43,6 +44,17 @@ validate_database_mode() {
             ;;
         *)
             echo "Error: USE_LOCAL_DB must be either 'true' or 'false'." >&2
+            return 64
+            ;;
+    esac
+}
+
+validate_web_ui_mode() {
+    case "${ENABLE_WEB_UI:-false}" in
+        true|false)
+            ;;
+        *)
+            echo "Error: ENABLE_WEB_UI must be either 'true' or 'false'." >&2
             return 64
             ;;
     esac
@@ -84,6 +96,18 @@ case "$COMMAND" in
             exit 1
         fi
         echo "[kanga-route] Verification run completed."
+        ;;
+    verify)
+        if [[ $# -ne 1 ]]; then
+            echo "Error: provide exactly one email address." >&2
+            exit 1
+        fi
+        validate_database_mode
+        cd "$COMPOSE_DIR"
+        if [[ "${USE_LOCAL_DB:-true}" == "true" ]]; then
+            docker compose up -d --wait dynamodb-local
+        fi
+        exec docker compose run --rm --no-deps engine kanga-route-verify "$1"
         ;;
     status)
         echo "[kanga-route] Compose stack:"
@@ -138,11 +162,22 @@ case "$COMMAND" in
         ;;
     _stack-up)
         validate_database_mode
+        validate_web_ui_mode
         cd "$COMPOSE_DIR"
         if [[ "${USE_LOCAL_DB:-true}" == "true" ]]; then
-            exec docker compose up -d --wait dynamodb-local
+            docker compose up -d --wait dynamodb-local
         fi
-        echo "[kanga-route] Cloud DynamoDB mode selected; no local cache container required."
+        case "${ENABLE_WEB_UI:-false}" in
+            true)
+                exec docker compose --profile ui up -d --wait web
+                ;;
+            false)
+                docker compose --profile ui stop web >/dev/null 2>&1 || true
+                ;;
+        esac
+        if [[ "${USE_LOCAL_DB:-true}" == "false" ]]; then
+            echo "[kanga-route] Cloud DynamoDB mode selected; no local cache container required."
+        fi
         ;;
     help|--help|-h)
         usage 0
