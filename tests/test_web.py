@@ -9,6 +9,7 @@ from kanga_route.application.single_verification import (
     SingleVerificationError,
     SingleVerificationOutcome,
 )
+from kanga_route.application.mail_advisory import MailAdvisoryService
 from kanga_route.models import (
     MailboxProvider,
     VerificationReason,
@@ -32,6 +33,19 @@ class StubService:
         if self.error:
             raise self.error
         return self.outcome
+
+
+class StubCache:
+    def __init__(self):
+        self.calls = []
+        self.result = None
+
+    def get(self, email):
+        self.calls.append(email)
+        return self.result
+
+    def put(self, result, ttl_seconds=None):
+        raise AssertionError("mail advice must never write cache evidence")
 
 
 def _outcome(status=VerificationStatus.VALID):
@@ -199,3 +213,43 @@ def test_health_response_exposes_no_runtime_detail():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_mail_advice_endpoint_is_cache_only_and_fail_open():
+    cache = StubCache()
+    cache.result = VerificationResult(
+        email="bad@example.com",
+        status=VerificationStatus.INVALID,
+        reason=VerificationReason.USER_NOT_FOUND,
+    )
+    with _client(
+        StubService(),
+        advisory_service=MailAdvisoryService(cache),
+    ) as client:
+        response = client.post(
+            "/api/v1/advice",
+            json={"recipients": ["Bad@Example.com"]},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["fail_open"] is True
+    assert payload["recipients"][0]["action"] == "warn"
+    assert payload["recipients"][0]["source"] == "cache"
+    assert cache.calls == ["bad@example.com"]
+
+
+def test_mail_advice_endpoint_allows_when_advisory_is_unavailable():
+    with _client(StubService()) as client:
+        response = client.post(
+            "/api/v1/advice",
+            json={"recipients": ["person@example.com"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["recipients"][0] == {
+        "email": "person@example.com",
+        "action": "allow",
+        "source": "unavailable",
+        "result": None,
+    }

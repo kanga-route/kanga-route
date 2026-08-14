@@ -114,7 +114,7 @@ security_group = aws.ec2.SecurityGroup(
             cidr_blocks=["0.0.0.0/0"],
         ),
         aws.ec2.SecurityGroupEgressArgs(
-            description="Outbound HTTPS for HubSpot API & AWS services",
+            description="Outbound HTTPS for adapter APIs and AWS services",
             from_port=443,
             to_port=443,
             protocol="tcp",

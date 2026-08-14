@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 from kanga_route.configuration import validate_smtp_identity
 from kanga_route.contracts import ICacheStore, IVerificationPipeline
-from kanga_route.engine.verifier import EMAIL_REGEX
+from kanga_route.email_address import normalize_email_address
 from kanga_route.models import VerificationResult, VerificationStatus
 
 
@@ -43,17 +43,10 @@ class SingleVerificationOutcome:
 
 def normalize_email(value: object) -> str:
     """Normalize one address or raise before any network operation."""
-    if not isinstance(value, str):
-        raise SingleVerificationError("invalid_email")
-
-    normalized = value.strip().lower()
-    if (
-        not normalized
-        or len(normalized) > 254
-        or EMAIL_REGEX.fullmatch(normalized) is None
-    ):
-        raise SingleVerificationError("invalid_email")
-    return normalized
+    try:
+        return normalize_email_address(value)
+    except ValueError as exc:
+        raise SingleVerificationError("invalid_email") from exc
 
 
 class SingleVerificationService:

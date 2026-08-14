@@ -6,6 +6,9 @@ import pytest
 from scripts.ami_release import extract_ami, record_release, render_catalog
 
 
+REPOSITORY = Path(__file__).parents[1]
+
+
 def test_extract_ami_returns_exact_region_candidate(tmp_path: Path) -> None:
     manifest = tmp_path / "packer-manifest.json"
     manifest.write_text(
@@ -86,10 +89,23 @@ def test_record_release_replaces_region_and_renders_document(tmp_path: Path) -> 
 
 
 def test_checked_in_catalog_document_is_current() -> None:
-    repository = Path(__file__).parents[1]
     catalog = json.loads(
-        (repository / "docs/ami-catalog.json").read_text(encoding="utf-8")
+        (REPOSITORY / "docs/ami-catalog.json").read_text(encoding="utf-8")
     )
-    document = (repository / "docs/ami-catalog.md").read_text(encoding="utf-8")
+    document = (REPOSITORY / "docs/ami-catalog.md").read_text(encoding="utf-8")
 
     assert document == render_catalog(catalog)
+
+
+def test_packer_payload_allowlist_contains_every_runtime_python_module() -> None:
+    """Prevent a valid-but-unbootable AMI when a package file is added."""
+    template = (REPOSITORY / "packer/kanga-route.pkr.hcl").read_text(
+        encoding="utf-8"
+    )
+    missing = [
+        path.relative_to(REPOSITORY).as_posix()
+        for path in sorted((REPOSITORY / "src/kanga_route").rglob("*.py"))
+        if path.relative_to(REPOSITORY).as_posix() not in template
+    ]
+
+    assert missing == []

@@ -1,4 +1,4 @@
-"""HubSpot CRM client implementing ICRMClient (ADR 0003).
+"""Low-level HubSpot CRM API client (ADR 0003).
 
 Pages contacts that need verification and performs batch property writebacks.
 """
@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from kanga_route.contracts import ICRMClient
 from kanga_route.models import (
     VerificationOutcome,
     VerificationResult,
@@ -51,7 +50,7 @@ def format_verification_properties(result: VerificationResult) -> Dict[str, str]
     }
 
 
-class HubSpotClient(ICRMClient):
+class HubSpotClient:
     """Client for interacting with HubSpot Contacts API v3."""
 
     BASE_URL = "https://api.hubapi.com/crm/v3/objects/contacts"

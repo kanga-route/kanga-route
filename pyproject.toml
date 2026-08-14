@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kanga-route"
 version = "0.1.0"
-description = "Containerized Virtual Appliance email verification and routing engine for HubSpot"
+description = "Containerized, product-neutral email verification and routing engine"
 authors = [{name = "Seth Hereford"}]
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,6 +22,7 @@ dependencies = [
 kanga-route-engine = "kanga_route.main:main"
 kanga-route-verify = "kanga_route.application.cli:main"
 kanga-route-web = "kanga_route.web.app:main"
+kanga-route-postfix-policy = "kanga_route.mail.postfix_policy:main"
 
 [project.optional-dependencies]
 dev = [

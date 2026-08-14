@@ -60,6 +60,25 @@ validate_web_ui_mode() {
     esac
 }
 
+validate_postfix_policy_mode() {
+    case "${ENABLE_POSTFIX_POLICY:-false}" in
+        true|false)
+            ;;
+        *)
+            echo "Error: ENABLE_POSTFIX_POLICY must be either 'true' or 'false'." >&2
+            return 64
+            ;;
+    esac
+    case "${POSTFIX_POLICY_MODE:-observe}" in
+        observe|enforce-cached-invalid)
+            ;;
+        *)
+            echo "Error: POSTFIX_POLICY_MODE must be 'observe' or 'enforce-cached-invalid'." >&2
+            return 64
+            ;;
+    esac
+}
+
 effective_calendar() {
     systemctl cat "$RUN_TIMER" --no-pager 2>/dev/null \
         | awk -F= '/^[[:space:]]*OnCalendar=/{value=substr($0,index($0,"=")+1)} END{if(value!="") print value}'
@@ -163,18 +182,21 @@ case "$COMMAND" in
     _stack-up)
         validate_database_mode
         validate_web_ui_mode
+        validate_postfix_policy_mode
         cd "$COMPOSE_DIR"
         if [[ "${USE_LOCAL_DB:-true}" == "true" ]]; then
             docker compose up -d --wait dynamodb-local
         fi
-        case "${ENABLE_WEB_UI:-false}" in
-            true)
-                exec docker compose --profile ui up -d --wait web
-                ;;
-            false)
-                docker compose --profile ui stop web >/dev/null 2>&1 || true
-                ;;
-        esac
+        if [[ "${ENABLE_WEB_UI:-false}" == "true" ]]; then
+            docker compose --profile ui up -d --wait web
+        else
+            docker compose --profile ui stop web >/dev/null 2>&1 || true
+        fi
+        if [[ "${ENABLE_POSTFIX_POLICY:-false}" == "true" ]]; then
+            docker compose --profile mail-policy up -d --wait postfix-policy
+        else
+            docker compose --profile mail-policy stop postfix-policy >/dev/null 2>&1 || true
+        fi
         if [[ "${USE_LOCAL_DB:-true}" == "false" ]]; then
             echo "[kanga-route] Cloud DynamoDB mode selected; no local cache container required."
         fi
