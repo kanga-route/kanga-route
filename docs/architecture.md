@@ -1,14 +1,19 @@
 # Kanga-Route Architecture
 
-Kanga-Route is a self-hosted AWS appliance that produces product-neutral email
-verification evidence without sending message bodies.
+Kanga-Route is a self-hosted appliance that produces product-neutral email
+verification evidence without sending message bodies. An OCI container is the
+canonical application payload; AWS is the first implemented VM delivery
+target, not an application boundary.
 
 ```mermaid
 flowchart TD
     Timer["systemd daily timer"] --> Batch["batch orchestration + file lock"]
     CLI["kanga-route run"] --> Batch
     SingleCLI["kanga-route verify"] --> Single["single-verification service"]
-    Browser["browser via SSM tunnel"] --> Web["loopback-published web container"]
+    PrivateBrowser["operator browser via SSM tunnel"] --> Web["loopback-published web container"]
+    PublicBrowser["operator browser over HTTPS"] --> Edge["ALB + Cognito authentication"]
+    Edge --> Proxy["host nginx reverse proxy"]
+    Proxy --> Web
     Web --> Single
     Batch --> Engine["verification engine"]
     Single --> Engine
@@ -81,8 +86,13 @@ sanitized errors, and runs blocking verification work behind explicit timeout,
 concurrency, and rate limits. Uvicorn access logging is disabled.
 
 The web container is opt-in and published as `127.0.0.1:8080` on the appliance.
-It contains no authentication mechanism and is intended only for SSM port
-forwarding. Non-loopback exposure remains blocked on the UI-04 TLS/auth design.
+It contains no authentication mechanism. Operators may reach it privately with
+SSM port forwarding. The documented CloudFormation deployment provides the
+only supported public path: an HTTPS ALB authenticates with Cognito, then sends
+traffic through an instance security-group rule to nginx, which proxies to the
+loopback service. Port 8080 is never exposed. Other non-loopback deployment
+patterns remain unsupported while UI-04's general TLS/authentication decision
+and tests are unfinished.
 
 `POST /api/v1/advice` is a separate multi-recipient, cache-only boundary for
 optional mail integration. Its service has no engine dependency. Misses and
@@ -104,6 +114,13 @@ Elastic IP, and EC2 instance. It requires a Kanga-Route AMI ID rather than
 falling back to Ubuntu, requires IMDSv2, encrypts the root disk, and exposes no
 SSH ingress unless a restricted CIDR is explicitly configured. SSM Session
 Manager is the default administration path.
+
+The companion CloudFormation stack is the guided standalone deployment. It
+creates a dedicated VPC, two public subnets, the appliance, an HTTPS ALB and ACM
+certificate, Route 53 record, Cognito user pool with mandatory TOTP MFA, and an
+nginx bridge to the loopback web service. The operator activates that path with
+one narrowly sourced ALB-to-instance security-group rule; direct public access
+to the instance or port 8080 is not supported.
 
 Outbound port 25 still requires AWS account approval, and operators must align
 the appliance Elastic IP with forward DNS, reverse DNS, and the configured SMTP
