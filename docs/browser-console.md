@@ -8,13 +8,24 @@ product-neutral application service powers the console, versioned API, and
 ## Exposure model
 
 The console is disabled by default. When enabled, Docker publishes it only on
-the appliance loopback interface. It has no login, session, token, cookie, or
-other authentication endpoint. Reach it through an SSM port-forwarding session;
-do not add EC2 ingress or change the Compose binding to a public interface.
+the appliance loopback interface. The application has no login, session, token,
+cookie, or other authentication endpoint. Never expose port 8080 or change the
+Compose binding to a public interface.
 
-This loopback-only HTTP mode does not authorize future network exposure. Any
-authenticated or non-loopback browser deployment requires the UI-04 TLS and
-authentication ADR first.
+Two appliance access paths are documented:
+
+- **Private access:** connect directly to loopback through an authenticated SSM
+  port-forwarding session.
+- **Public AWS access:** use the [beginner AWS deployment](aws-appliance-deployment.md),
+  where an HTTPS ALB authenticates users with Cognito before forwarding through
+  nginx to the loopback service. The instance accepts nginx traffic only from
+  the ALB security group.
+
+The CloudFormation path is the only supported public exposure model today. It
+does not add authentication to the application itself. Do not copy only part
+of that design or place another proxy in front of Kanga-Route without a
+reviewed TLS, authentication, trusted-proxy, and recovery design. UI-04 remains
+open for that general contract and its security tests.
 
 Enable it in `/opt/kanga-route/.env`:
 

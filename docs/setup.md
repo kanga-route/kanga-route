@@ -128,9 +128,14 @@ sudo systemctl restart kanga-route.service
 
 The port is published only on appliance loopback. Use SSM port forwarding and
 open `http://127.0.0.1:8080/` on the operator workstation. Do not add an EC2
-ingress rule or change the Compose address binding. This first console has no
-authentication endpoint; any non-loopback or authenticated deployment is
-blocked until the TLS/authentication design is complete.
+ingress rule for port 8080 or change the Compose address binding. The console
+has no application authentication endpoint.
+
+For the supported public AWS path, follow the
+[beginner AWS deployment](aws-appliance-deployment.md) in full. Its HTTPS ALB
+authenticates with Cognito and reaches only an nginx proxy on instance port 80;
+nginx then proxies to loopback. Do not reproduce only selected pieces of that
+security boundary.
 
 For one verification without a browser, run:
 

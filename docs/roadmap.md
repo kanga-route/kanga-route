@@ -15,7 +15,7 @@ documentation.
 - **Conservative results:** transient or ambiguous evidence remains `Unknown`;
   only explicit evidence may produce `Invalid`.
 - **Product-neutral core:** verification and caching must not depend on HubSpot,
-  another integration, the CLI, or the future web UI.
+  another integration, the CLI, or the browser UI.
 - **Adapters translate; the engine decides:** integrations fetch records, map
   them into shared contracts, and format results for their product. They do not
   reimplement verification policy.
@@ -31,8 +31,9 @@ documentation.
 
 ## Current foundation
 
-The MVP provides syntax, role-address, disposable-domain, DNS/MX, SMTP, and
-catch-all checks; conservative result classifications; bounded concurrency;
+The current implementation provides syntax, role-address, disposable-domain,
+DNS/MX, SMTP, and catch-all checks; conservative result classifications;
+bounded concurrency;
 local or managed DynamoDB caching; a HubSpot integration; Docker Compose,
 systemd, Packer, Pulumi, SSM-first administration, and CI.
 
@@ -68,7 +69,7 @@ Each item has a stable identifier for issues and pull requests, such as
 ## Milestone 1: Product-neutral application core
 
 **Goal:** run the same workflow from HubSpot, another integration, the CLI, or
-the future UI without importing product-specific code.
+the browser UI without importing product-specific code.
 
 ### CORE-01 — Introduce a product-neutral input record
 
@@ -371,6 +372,8 @@ Acceptance criteria:
 
 ### UI-04 — Enforce TLS before authentication
 
+**Status:** In progress
+
 **Size:** L
 
 **Labels:** `area/security`, `area/ui`, `needs design`
@@ -381,6 +384,12 @@ Bind to loopback or a private interface by default. Any login, token, session
 cookie, or authenticated request must be accepted only through HTTPS. Plaintext
 HTTP may redirect or expose a minimal health response, but never accepts
 credentials or authenticated work.
+
+The guided AWS CloudFormation deployment now supplies one concrete secure edge:
+an HTTPS ALB authenticates with Cognito before forwarding through a restricted
+instance security group and nginx to the loopback-only web container. The
+general ADR, trusted-proxy contract, and security tests remain to be completed
+before other public deployment patterns are supported.
 
 Acceptance criteria:
 
