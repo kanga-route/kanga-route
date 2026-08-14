@@ -37,10 +37,13 @@ the exact staged candidate, without rebuilding it, is post-MVP work.
 The bakery authenticates to AWS through GitHub Actions OIDC. Configure the
 repository variable `AWS_AMI_BUILDER_ROLE_ARN` with the ARN of a dedicated
 builder role. Its trust policy must restrict the GitHub subject to
-`repo:kanga-route/kanga-route:ref:refs/heads/master` and the audience to
-`sts.amazonaws.com`. Do not configure long-lived AWS access-key secrets for
-the workflow. The build verifies its caller identity before Packer creates any
-resources.
+`repo:kanga-route@313547928/kanga-route@1324385265:ref:refs/heads/master`
+and the audience to `sts.amazonaws.com`. GitHub uses this repository's
+immutable owner and repository IDs in OIDC subjects. Confirm the current prefix
+with `gh api repos/kanga-route/kanga-route/actions/oidc/customization/sub`
+before creating or changing the AWS trust policy. Do not configure long-lived
+AWS access-key secrets for the workflow. The build verifies its caller identity
+before Packer creates any resources.
 
 The previously listed public AMI predates this MVP work. It is intentionally
 not advertised as an MVP release image; use a candidate built from the current
