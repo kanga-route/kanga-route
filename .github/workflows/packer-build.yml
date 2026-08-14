@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: packer-appliance-${{ github.ref }}
@@ -30,6 +31,16 @@ jobs:
         with:
           version: "latest"
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ vars.AWS_AMI_BUILDER_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: kanga-route-packer-${{ github.run_id }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
       - name: Initialize Packer plugins
         run: packer init packer/kanga-route.pkr.hcl
 
@@ -38,8 +49,6 @@ jobs:
 
       - name: Build AMI
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           BUILD_REGION: ${{ inputs.aws_region }}
         run: |
           packer build \
