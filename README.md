@@ -34,6 +34,14 @@ and deploy that exact candidate privately after it passes staging. Public
 sharing is a separate manual release operation for now; automating promotion of
 the exact staged candidate, without rebuilding it, is post-MVP work.
 
+The bakery authenticates to AWS through GitHub Actions OIDC. Configure the
+repository variable `AWS_AMI_BUILDER_ROLE_ARN` with the ARN of a dedicated
+builder role. Its trust policy must restrict the GitHub subject to
+`repo:kanga-route/kanga-route:ref:refs/heads/master` and the audience to
+`sts.amazonaws.com`. Do not configure long-lived AWS access-key secrets for
+the workflow. The build verifies its caller identity before Packer creates any
+resources.
+
 The previously listed public AMI predates this MVP work. It is intentionally
 not advertised as an MVP release image; use a candidate built from the current
 commit.
