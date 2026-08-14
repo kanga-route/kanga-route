@@ -55,11 +55,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: synthetic-ci-secret-key
           AWS_SESSION_TOKEN: synthetic-ci-session-token
         run: |
-          docker compose --profile ui config --format json | python -c '
+          docker compose --profile ui --profile mail-policy config --format json | python -c '
           import json, sys
           services = json.load(sys.stdin)["services"]
           forbidden = {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"}
-          for service_name in ("engine", "web"):
+          for service_name in ("engine", "web", "postfix-policy"):
               leaked = sorted(forbidden.intersection(services[service_name]["environment"]))
               if leaked:
                   raise SystemExit(
@@ -75,6 +75,14 @@ jobs:
           fi
           if ENABLE_WEB_UI=invalid KANGA_ROUTE_DIR="$PWD" bin/kanga-route _stack-up; then
             echo "Malformed ENABLE_WEB_UI was accepted" >&2
+            exit 1
+          fi
+          if ENABLE_POSTFIX_POLICY=invalid KANGA_ROUTE_DIR="$PWD" bin/kanga-route _stack-up; then
+            echo "Malformed ENABLE_POSTFIX_POLICY was accepted" >&2
+            exit 1
+          fi
+          if POSTFIX_POLICY_MODE=invalid KANGA_ROUTE_DIR="$PWD" bin/kanga-route _stack-up; then
+            echo "Malformed POSTFIX_POLICY_MODE was accepted" >&2
             exit 1
           fi
 
@@ -96,6 +104,22 @@ jobs:
             http://127.0.0.1:8080/api/v1/verify)"
           test "$status" = "422"
           grep --fixed-strings '"code":"invalid_email"' /tmp/invalid-response.json
+          curl --fail --silent --show-error \
+            --header 'content-type: application/json' \
+            --data '{"recipients":["ci-advice@kanga-route.invalid"]}' \
+            http://127.0.0.1:8080/api/v1/advice \
+            | grep --fixed-strings '"fail_open":true'
+      - name: Smoke-test fail-open Postfix policy
+        run: |
+          docker compose up -d --wait dynamodb-local
+          docker compose --profile mail-policy up -d postfix-policy
+          docker compose --profile mail-policy exec -T postfix-policy python -c '
+          import socket
+          with socket.create_connection(("127.0.0.1", 10040), timeout=2) as connection:
+              connection.sendall(b"request=smtpd_access_policy\nrecipient=ci-policy@kanga-route.invalid\n\n")
+              response = connection.recv(1024)
+          assert response == b"action=DUNNO\n\n", response
+          '
       - name: Run browser interaction tests
         run: |
           docker run --rm --network host \

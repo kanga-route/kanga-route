@@ -24,6 +24,7 @@ KANGA_ROUTE_WEB_PORT=8080
 WEB_VERIFY_TIMEOUT_SECONDS=45
 WEB_MAX_CONCURRENT=2
 WEB_REQUESTS_PER_MINUTE=30
+MAIL_ADVICE_REQUESTS_PER_MINUTE=600
 ```
 
 Restart the stack and start an SSM tunnel from the operator workstation:
@@ -92,6 +93,22 @@ Stable codes are `invalid_email`, `invalid_request`,
 `unsupported_media_type`, `request_too_large`, `rate_limited`,
 `request_timeout`, `cache_unavailable`, `configuration_invalid`, and
 `verification_failed`.
+
+## Cache-only mail advice API
+
+`POST /api/v1/advice` is a distinct multi-recipient contract for optional mail
+integrations:
+
+```json
+{"recipients":["person@example.com","other@example.net"]}
+```
+
+It reads cached evidence only; it cannot invoke DNS, SMTP, or the live engine.
+Its response declares `fail_open: true`, and every cache miss or cache failure
+returns `allow`. Cached `Invalid` evidence returns `warn`, while `Valid`,
+`Catch-All`, and `Unknown` return `allow`. See the
+[mail-server integration guide](mail-server-integration.md) before connecting a
+mail system. The loopback API is unauthenticated and must not be made public.
 
 ## Operational behavior
 

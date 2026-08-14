@@ -1,15 +1,35 @@
-"""Strict interface contracts between Kanga-Route architectural components.
+"""Product-neutral ports between Kanga-Route architectural components.
 
-Enforces clear boundaries between Verification Engine, DynamoDB Cache, and HubSpot CRM Client.
+Only domain types cross these boundaries.  Product SDK objects, product-specific
+errors, authentication details, and field formatting belong behind an adapter.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional, Sequence
+
 from kanga_route.models import (
     VerificationOutcome,
     VerificationResult,
     VerificationTarget,
 )
+
+
+class AdapterError(RuntimeError):
+    """A stable application-facing failure raised by any integration adapter."""
+
+
+@dataclass(frozen=True)
+class AdapterCapabilities:
+    """Operations and limits an adapter promises to the batch orchestrator."""
+
+    can_read_targets: bool
+    can_write_outcomes: bool
+    max_batch_size: int
+
+    def __post_init__(self) -> None:
+        if self.max_batch_size < 1:
+            raise ValueError("max_batch_size must be greater than zero")
 
 
 class IVerificationStage(ABC):
@@ -19,7 +39,7 @@ class IVerificationStage(ABC):
     def evaluate(
         self, email: str, context: Optional[dict] = None
     ) -> Optional[VerificationResult]:
-        """Evaluates an email. Returns a VerificationResult if a terminal status is reached, or None to continue."""
+        """Return a terminal result, or None to continue the pipeline."""
         pass
 
 
@@ -46,19 +66,40 @@ class ICacheStore(ABC):
         pass
 
 
-class ICRMClient(ABC):
-    """Abstract interface for CRM operations (HubSpot)."""
+class IVerificationAdapter(ABC):
+    """Stable port implemented by every product or service integration.
 
+    Adding an adapter must not require a verification-engine change.  Adapters
+    select neutral targets and translate neutral outcomes into their own API.
+    """
+
+    @property
     @abstractmethod
-    def fetch_unverified_contacts(
-        self, limit: int = 100
-    ) -> List[VerificationTarget]:
-        """Fetches batch of contacts requiring verification."""
+    def name(self) -> str:
+        """Return the stable configuration name for this adapter."""
+        pass
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> AdapterCapabilities:
+        """Declare supported operations and the adapter's hard batch limit."""
         pass
 
     @abstractmethod
-    def batch_update_verification_results(
-        self, outcomes: List[VerificationOutcome]
+    def validate_configuration(self) -> None:
+        """Raise AdapterError before I/O when required settings are absent."""
+        pass
+
+    @abstractmethod
+    def fetch_targets(
+        self, limit: int = 100
+    ) -> Sequence[VerificationTarget]:
+        """Return product-neutral records selected for verification."""
+        pass
+
+    @abstractmethod
+    def write_outcomes(
+        self, outcomes: Sequence[VerificationOutcome]
     ) -> bool:
-        """Batch updates contact verification properties in the CRM."""
+        """Persist product-neutral outcomes using adapter-owned formatting."""
         pass

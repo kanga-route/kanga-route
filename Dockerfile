@@ -26,6 +26,6 @@ RUN pip install --no-cache-dir --no-deps . \
 
 USER kanga-route
 
-EXPOSE 8080
+EXPOSE 8080 10040
 
 CMD ["kanga-route-engine"]

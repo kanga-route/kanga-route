@@ -23,6 +23,8 @@ It does not send email message bodies.
 - Safe classifications: transient DNS, SMTP, and policy failures stay
   `Unknown`; explicit evidence is required for `Invalid`.
 - Product-neutral verification targets, outcomes, and JSON result envelopes.
+- A stable adapter port and explicit registry that keep product authentication,
+  limits, errors, and formatting outside shared orchestration and the engine.
 - Single-address verification through the browser console, versioned API, or
   CLI without reading from or writing to a product integration.
 - A HubSpot reference adapter with paging, bounded API retry, cooldown-aware
@@ -33,6 +35,8 @@ It does not send email message bodies.
   journald logs, and overlap protection.
 - An opt-in browser console and versioned API for one address, published only
   on appliance loopback for SSM port forwarding.
+- Cache-only, multi-recipient mail advice plus an opt-in fail-open Postfix
+  reference policy service; neither performs live verification in a mail flow.
 - A controlled AMI delivery pipeline that bakes one private candidate, promotes
   that exact image through an approval gate, and records it in a regional AMI
   catalog.
@@ -46,9 +50,11 @@ formatting. The current release supports:
   `POST /api/v1/verify`, or `kanga-route-verify`.
 - **HubSpot batch verification:** the first full read/write adapter and the
   reference implementation for future integrations.
-- **Contributor extension points:** neutral records and outcomes are in place;
-  the [roadmap](docs/roadmap.md) tracks the remaining adapter contract, CSV
-  support, contract-test kit, and selection of the next API-backed product.
+- **Contributor extension points:** the neutral adapter port and registry are in
+  place; the [roadmap](docs/roadmap.md) tracks CSV support, completion of the
+  contract-test kit, and selection of the next API-backed product.
+- **Optional mail advice:** `POST /api/v1/advice` and the Postfix reference
+  service read cached evidence only and fail open on misses or failures.
 
 An integration owns authentication, record retrieval, field mapping, and
 writeback formatting. It should not change syntax, disposable-domain, DNS, SMTP,
@@ -139,12 +145,15 @@ app token; standalone verification does not.
 - [Beginner AWS and CloudFormation deployment](docs/aws-appliance-deployment.md)
 - [Architecture](docs/architecture.md)
 - [Browser console](docs/browser-console.md)
+- [Integration authoring contract](docs/integration-authoring.md)
+- [Optional mail-server advice](docs/mail-server-integration.md)
 - [HubSpot user story and workflows](docs/hubspot-user-story.md)
 - [Long-term operations](docs/long-term-use.md)
 - [Roadmap](docs/roadmap.md)
 - [ADR 0001: Containerized appliance](docs/adr/0001-use-containerized-virtual-appliance.md)
 - [ADR 0002: Dual-mode DynamoDB cache](docs/adr/0002-dual-mode-dynamodb-caching.md)
 - [ADR 0003: HubSpot writebacks](docs/adr/0003-hubspot-granular-writebacks.md)
+- [ADR 0004: Stable adapter ports and fail-open mail advice](docs/adr/0004-stable-adapter-ports-and-fail-open-mail-advice.md)
 
 ## Repository layout
 

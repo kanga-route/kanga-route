@@ -6,6 +6,7 @@ services:
     init: true
     environment:
       HUBSPOT_ACCESS_TOKEN: "${HUBSPOT_ACCESS_TOKEN:-}"
+      KANGA_ROUTE_ADAPTER: "${KANGA_ROUTE_ADAPTER:-hubspot}"
       BATCH_SIZE: "${BATCH_SIZE:-100}"
       REVERIFY_AFTER_DAYS: "${REVERIFY_AFTER_DAYS:-30}"
       UNKNOWN_RETRY_AFTER_HOURS: "${UNKNOWN_RETRY_AFTER_HOURS:-48}"
@@ -66,6 +67,7 @@ services:
       WEB_VERIFY_TIMEOUT_SECONDS: "${WEB_VERIFY_TIMEOUT_SECONDS:-45}"
       WEB_MAX_CONCURRENT: "${WEB_MAX_CONCURRENT:-2}"
       WEB_REQUESTS_PER_MINUTE: "${WEB_REQUESTS_PER_MINUTE:-30}"
+      MAIL_ADVICE_REQUESTS_PER_MINUTE: "${MAIL_ADVICE_REQUESTS_PER_MINUTE:-600}"
     entrypoint:
       - /bin/sh
       - -ec
@@ -103,6 +105,49 @@ services:
       start_period: 10s
     ports:
       - "127.0.0.1:${KANGA_ROUTE_WEB_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  postfix-policy:
+    profiles: ["mail-policy"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    environment:
+      USE_LOCAL_DB: "${USE_LOCAL_DB:-true}"
+      DYNAMODB_ENDPOINT_URL: "${DYNAMODB_ENDPOINT_URL:-}"
+      DYNAMODB_TABLE_NAME: "${DYNAMODB_TABLE_NAME:-KangaRouteCache}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      POSTFIX_POLICY_PORT: "10040"
+      POSTFIX_POLICY_MODE: "${POSTFIX_POLICY_MODE:-observe}"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        case "$${USE_LOCAL_DB}" in
+          true)
+            if [ -z "$${DYNAMODB_ENDPOINT_URL}" ]; then
+              export DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+            fi
+            export AWS_ACCESS_KEY_ID=fakeMyKeyId
+            export AWS_SECRET_ACCESS_KEY=fakeSecretAccessKey
+            unset AWS_SESSION_TOKEN
+            ;;
+          false)
+            ;;
+          *)
+            echo "Error: USE_LOCAL_DB must be either 'true' or 'false'." >&2
+            exit 64
+            ;;
+        esac
+        exec "$$@"
+      - --
+    command: ["kanga-route-postfix-policy"]
+    ports:
+      - "127.0.0.1:${KANGA_ROUTE_POSTFIX_POLICY_PORT:-10040}:10040"
     restart: unless-stopped
 
   dynamodb-local-init:

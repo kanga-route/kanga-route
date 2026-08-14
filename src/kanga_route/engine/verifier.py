@@ -18,6 +18,7 @@ import dns.exception
 import dns.resolver
 
 from kanga_route.contracts import IVerificationPipeline, IVerificationStage
+from kanga_route.email_address import EMAIL_REGEX
 from kanga_route.models import (
     VerificationResult,
     VerificationStatus,
@@ -177,12 +178,6 @@ DISPOSABLE_DOMAINS: Set[str] = {
     "trashymail.com",
     "zippymail.in",
 }
-
-# Basic RFC 5322 pattern check
-EMAIL_REGEX = re.compile(
-    r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
-)
-
 
 class SyntaxAndRoleStage(IVerificationStage):
     """Layer 1: Evaluates email syntax and role account status."""

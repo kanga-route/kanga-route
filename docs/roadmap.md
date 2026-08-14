@@ -34,10 +34,10 @@ catch-all checks; conservative result classifications; bounded concurrency;
 local or managed DynamoDB caching; a HubSpot integration; Docker Compose,
 systemd, Packer, Pulumi, SSM-first administration, and CI.
 
-Shared verification evidence, input targets, and target-result associations are now
-product-neutral. HubSpot owns its record mapping and property formatting. The
-remaining shared product coupling is the CRM-shaped `ICRMClient` contract and
-HubSpot-specific entrypoint behavior; CORE-04 is the next architectural gate.
+Shared evidence, targets, outcomes, orchestration, and adapter selection are
+product-neutral. HubSpot is behind the stable adapter port and owns its mapping,
+limits, failures, and formatting. A cache-only mail advisory service and Postfix
+reference integration demonstrate that new consumers do not modify the engine.
 
 ## Contributor workflow
 
@@ -123,6 +123,8 @@ Acceptance criteria:
 
 ### CORE-04 — Replace `ICRMClient` with an adapter contract
 
+**Status:** Complete
+
 **Size:** L
 
 **Labels:** `area/core`, `area/integration`, `needs design`
@@ -144,6 +146,8 @@ Acceptance criteria:
 
 ### CORE-05 — Add adapter selection and configuration discovery
 
+**Status:** Complete
+
 **Size:** M
 
 **Labels:** `area/core`, `area/integration`, `help wanted`
@@ -162,6 +166,8 @@ Acceptance criteria:
 - Selection failures have tests and actionable messages.
 
 ### CORE-06 — Publish an adapter contract-test kit
+
+**Status:** In progress
 
 **Size:** M
 
@@ -190,6 +196,8 @@ HubSpot types, property names, limits, or error messages.
 verification semantics supplied by the core.
 
 ### INT-01 — Make HubSpot the reference adapter
+
+**Status:** In progress
 
 **Size:** M
 
@@ -403,7 +411,61 @@ without an integration and without an authenticated plaintext endpoint.
 
 ---
 
-## Milestone 4: Operational hardening
+## Milestone 4: Optional mail-system advice
+
+**Goal:** let a mail system use existing evidence without making Kanga-Route a
+relay, delivery hop, or availability dependency.
+
+### MAIL-01 — Add cache-only recipient advice
+
+**Status:** Complete
+
+**Size:** M
+
+**Labels:** `area/integration`, `area/core`, `area/security`
+
+The multi-recipient application service and `POST /api/v1/advice` cannot import
+or receive the live engine. Cached `Invalid` produces a warning; every miss,
+ambiguous result, and failure allows mail to continue.
+
+### MAIL-02 — Add a fail-open Postfix reference adapter
+
+**Status:** Complete
+
+**Size:** M
+
+**Labels:** `area/integration`, `area/operations`
+
+The opt-in policy service defaults to observe-only `DUNNO`. Enforcement is an
+explicit operator choice and applies only to cached `Invalid` evidence. Postfix
+uses a short timeout and `default_action=DUNNO` for process-level fail-open.
+
+### MAIL-03 — Warm cache misses asynchronously
+
+**Size:** M
+
+**Labels:** `area/core`, `area/operations`, `needs design`
+
+Define a bounded, deduplicated queue that may receive advisory cache misses
+after the mail transaction returns. Queue failure must not alter the advisory
+response, and workers must use the existing engine port.
+
+### MAIL-04 — Add compose-time cloud-mail adapters
+
+**Size:** L
+
+**Labels:** `area/integration`, `area/ui`, `needs design`
+
+Prototype Outlook Smart Alerts and a user-invoked Gmail compose add-on. Each
+must batch recipients, use a sub-500-ms caller deadline, and allow send when the
+add-on or Kanga-Route is unavailable. Connector/smart-host routing is excluded.
+
+**Milestone exit:** on-premises and cloud compose surfaces can consume the same
+advisory contract without live verification or a mandatory mail hop.
+
+---
+
+## Milestone 5: Operational hardening
 
 These can progress alongside feature milestones when they do not alter
 unfinished core contracts.
@@ -464,7 +526,7 @@ unfinished core contracts.
 
 These require an ADR and explicit maintainer approval:
 
-- Final adapter interface and any third-party plugin mechanism.
+- Changes to the accepted adapter interface and any third-party plugin mechanism.
 - Authentication and TLS architecture for the browser UI.
 - Changes to status or reason meanings.
 - New network probes or material SMTP behavior changes.
@@ -478,16 +540,17 @@ These require an ADR and explicit maintainer approval:
 - Browser-based bulk upload.
 - Product OAuth secrets in browser storage.
 - Product-specific verification logic in the core.
+- Using Kanga-Route as an SMTP relay, smart host, or mandatory delivery hop.
 - Additional image formats without demonstrated users and maintainers.
 - Automatically suppressing contacts based only on `Unknown` or `Catch-All`.
 
 ## Suggested next contributor issues
 
-1. **OPS-05:** support pre-provisioned DynamoDB.
-2. **OPS-01:** inventory and pin one dependency category at a time.
-3. **CORE-04:** propose the adapter contract ADR with maintainer guidance.
-4. **OPS-03:** add privacy-safe metrics and run summaries.
-5. **OPS-04:** document and test backup and restore.
+1. **CORE-06:** finish and publish the reusable adapter contract-test kit.
+2. **INT-01:** finish organizing HubSpot as the documented reference adapter.
+3. **INT-02:** prove portability with a CSV adapter.
+4. **MAIL-03:** design asynchronous, non-blocking cache warming.
+5. **OPS-05:** support pre-provisioned DynamoDB.
 
-OPS-05 is the smallest independent code change. CORE-04 is the critical path
-for contributors who want to unlock the integration framework.
+OPS-05 is the smallest independent code change. CORE-06 and INT-01 are the
+best starting points for contributors preparing a new product integration.

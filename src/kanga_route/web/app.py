@@ -20,11 +20,13 @@ from kanga_route.application.single_verification import (
     SingleVerificationError,
     SingleVerificationService,
 )
+from kanga_route.application.mail_advisory import MailAdvisoryService
 from kanga_route.cache.dynamodb import DynamoDBCacheStore
 from kanga_route.engine.verifier import VerificationEngine
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 MAX_REQUEST_BYTES = 1_024
+MAX_ADVICE_REQUEST_BYTES = 32_768
 
 PUBLIC_ERRORS = {
     "invalid_email": "Enter one complete email address.",
@@ -46,6 +48,14 @@ class VerifyRequest(BaseModel):
 
     email: str = Field(min_length=1, max_length=320)
     cache_policy: CachePolicy = CachePolicy.USE
+
+
+class AdviceRequest(BaseModel):
+    """Strict request envelope for cache-only recipient advice."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    recipients: list[str] = Field(min_length=1, max_length=100)
 
 
 class RequestLimiter:
@@ -115,10 +125,12 @@ async def _run_with_timeout(
 
 def create_app(
     service: Optional[SingleVerificationService] = None,
+    advisory_service: Optional[MailAdvisoryService] = None,
     *,
     timeout_seconds: Optional[float] = None,
     max_concurrent: Optional[int] = None,
     requests_per_minute: Optional[int] = None,
+    advice_requests_per_minute: Optional[int] = None,
 ) -> FastAPI:
     """Create the same-origin API and browser application."""
     configured_timeout = timeout_seconds or float(
@@ -130,12 +142,17 @@ def create_app(
     configured_rate = requests_per_minute or int(
         os.getenv("WEB_REQUESTS_PER_MINUTE", "30")
     )
+    configured_advice_rate = advice_requests_per_minute or int(
+        os.getenv("MAIL_ADVICE_REQUESTS_PER_MINUTE", "600")
+    )
     if configured_timeout <= 0:
         raise ValueError("WEB_VERIFY_TIMEOUT_SECONDS must be positive")
     if configured_concurrency <= 0:
         raise ValueError("WEB_MAX_CONCURRENT must be positive")
     if configured_rate <= 0:
         raise ValueError("WEB_REQUESTS_PER_MINUTE must be positive")
+    if configured_advice_rate <= 0:
+        raise ValueError("MAIL_ADVICE_REQUESTS_PER_MINUTE must be positive")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -148,6 +165,10 @@ def create_app(
             )
         else:
             app.state.verification_service = service
+            cache_store = getattr(service, "cache_store", None)
+        app.state.advisory_service = advisory_service
+        if app.state.advisory_service is None and cache_store is not None:
+            app.state.advisory_service = MailAdvisoryService(cache_store)
         yield
 
     app = FastAPI(
@@ -161,6 +182,7 @@ def create_app(
         configured_concurrency
     )
     app.state.request_limiter = RequestLimiter(configured_rate)
+    app.state.advice_request_limiter = RequestLimiter(configured_advice_rate)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -233,6 +255,69 @@ def create_app(
                 "cache": {"status": outcome.cache_status.value},
             }
         )
+
+    @app.post("/api/v1/advice")
+    async def advise(request: Request):
+        content_type = request.headers.get("content-type", "")
+        if content_type.partition(";")[0].strip().lower() != "application/json":
+            return error_response("unsupported_media_type", 415)
+
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > MAX_ADVICE_REQUEST_BYTES:
+                    return error_response("request_too_large", 413)
+            except ValueError:
+                return error_response("invalid_request", 400)
+
+        body = await request.body()
+        if len(body) > MAX_ADVICE_REQUEST_BYTES:
+            return error_response("request_too_large", 413)
+        try:
+            decoded = json.loads(body.decode("utf-8"))
+            payload = AdviceRequest.model_validate(decoded)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValidationError):
+            return error_response("invalid_request", 422)
+
+        client_key = request.client.host if request.client else "local"
+        if not await app.state.advice_request_limiter.allow(client_key):
+            return error_response("rate_limited", 429)
+
+        advisory = app.state.advisory_service
+        if advisory is None:
+            return JSONResponse(
+                {
+                    "fail_open": True,
+                    "recipients": [
+                        {
+                            "email": email.strip().lower(),
+                            "action": "allow",
+                            "source": "unavailable",
+                            "result": None,
+                        }
+                        for email in payload.recipients
+                    ],
+                }
+            )
+
+        try:
+            outcome = await asyncio.to_thread(advisory.advise, payload.recipients)
+        except Exception:
+            return JSONResponse(
+                {
+                    "fail_open": True,
+                    "recipients": [
+                        {
+                            "email": email.strip().lower(),
+                            "action": "allow",
+                            "source": "unavailable",
+                            "result": None,
+                        }
+                        for email in payload.recipients
+                    ],
+                }
+            )
+        return JSONResponse(outcome.to_dict())
 
     app.mount(
         "/assets",
