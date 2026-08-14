@@ -2,10 +2,17 @@
 
 # Kanga-Route
 
-Kanga-Route is a self-hosted AWS appliance that verifies HubSpot contact email
-addresses before sales outreach. It pages contacts from HubSpot, applies
-syntax/disposable-domain/DNS/SMTP checks, caches definitive outcomes, and
-writes five granular properties back to the original contacts.
+Kanga-Route is a self-hosted AWS appliance for conservative email verification.
+Its verification engine accepts an email address and returns product-neutral
+evidence through a browser UI, HTTP API, CLI, or integration adapter. The core
+does not require a CRM account and is designed to support products beyond any
+single vendor.
+
+HubSpot is the first shipped batch integration, not the boundary of the tool.
+Its adapter pages contacts, sends their addresses through the same verification
+engine, and writes five granular properties back to the original records.
+Additional adapters can translate their own records and result formats without
+adding product-specific behavior to the verification stages.
 
 It does not send email message bodies.
 
@@ -15,8 +22,11 @@ It does not send email message bodies.
   multiple-MX failover, and a global concurrency cap.
 - Safe classifications: transient DNS, SMTP, and policy failures stay
   `Unknown`; explicit evidence is required for `Invalid`.
-- HubSpot paging, bounded API retry, cooldown-aware re-verification, and
-  exact contact-ID writebacks.
+- Product-neutral verification targets, outcomes, and JSON result envelopes.
+- Single-address verification through the browser console, versioned API, or
+  CLI without reading from or writing to a product integration.
+- A HubSpot reference adapter with paging, bounded API retry, cooldown-aware
+  re-verification, and exact contact-ID writebacks.
 - DynamoDB Local for a zero-infrastructure cache, or managed DynamoDB through
   the EC2 instance role; both use a 30-day default TTL.
 - A daily persistent systemd timer, manual `kanga-route` control plane,
@@ -26,6 +36,23 @@ It does not send email message bodies.
 - A controlled AMI delivery pipeline that bakes one private candidate, promotes
   that exact image through an approval gate, and records it in a regional AMI
   catalog.
+
+## Integration status
+
+Kanga-Route separates verification from product-specific transport and
+formatting. The current release supports:
+
+- **Standalone verification:** one address at a time through the browser UI,
+  `POST /api/v1/verify`, or `kanga-route-verify`.
+- **HubSpot batch verification:** the first full read/write adapter and the
+  reference implementation for future integrations.
+- **Contributor extension points:** neutral records and outcomes are in place;
+  the [roadmap](docs/roadmap.md) tracks the remaining adapter contract, CSV
+  support, contract-test kit, and selection of the next API-backed product.
+
+An integration owns authentication, record retrieval, field mapping, and
+writeback formatting. It should not change syntax, disposable-domain, DNS, SMTP,
+cache, or classification behavior in the shared engine.
 
 ## Quick start
 
@@ -55,14 +82,17 @@ The previously listed public AMI predates this MVP work. It is intentionally
 not advertised as an MVP release image; use a candidate built from the current
 commit.
 
-Before the first production run you must:
+Before the first real SMTP verification you must:
 
-1. create the five exact HubSpot contact properties and a private app;
-2. allocate an Elastic IP and align A, PTR, SPF, HELO, and envelope-from values;
-3. obtain AWS outbound port 25 approval;
-4. copy `.env.example` to `.env`, store it with mode `0600`, and replace
+1. allocate an Elastic IP and align A, PTR, SPF, HELO, and envelope-from values;
+2. obtain AWS outbound port 25 approval;
+3. copy `.env.example` to `.env`, store it with mode `0600`, and replace
    the fail-safe `.invalid` SMTP placeholders; and
-5. start a manual smoke run with `sudo kanga-route run`.
+4. test one address through the CLI, browser UI, or versioned API.
+
+To enable the current HubSpot batch integration, also create the five exact
+contact properties, configure a private-app token, and start with a manual
+smoke run using `sudo kanga-route run` before enabling its schedule.
 
 Follow [the setup and operations guide](docs/setup.md) for exact property types,
 Pulumi configuration, cache modes, schedules, and result semantics.
@@ -97,8 +127,9 @@ docker run --rm --network host \
 ```
 
 A clean checkout does not require a secret `.env` merely to validate or build
-the Compose project. A real verification run intentionally fails until the
-HubSpot token and public SMTP identity are configured.
+the Compose project. A real SMTP probe requires a configured public SMTP
+identity. The scheduled HubSpot integration additionally requires its private
+app token; standalone verification does not.
 
 ## Documentation
 
