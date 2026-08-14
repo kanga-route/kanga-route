@@ -23,16 +23,21 @@ It does not send email message bodies.
   journald logs, and overlap protection.
 - An opt-in browser console and versioned API for one address, published only
   on appliance loopback for SSM port forwarding.
-- A private-candidate-only Packer AMI workflow and Pulumi infrastructure that
-  requires an appliance AMI and defaults to SSM-only administration.
+- A controlled AMI delivery pipeline that bakes one private candidate, promotes
+  that exact image through an approval gate, and records it in a regional AMI
+  catalog.
 
 ## Quick start
 
-AMI builds are always private candidates. Run the manual Packer workflow
-from the commit you intend to release, boot and smoke-test the resulting AMI,
-and deploy that exact candidate privately after it passes staging. Public
-sharing is a separate manual release operation for now; automating promotion of
-the exact staged candidate, without rebuilding it, is post-MVP work.
+Start with the [AMI catalog](docs/ami-catalog.md). It shows the current image ID
+for each region and whether that image is a private candidate, account-shared,
+or public. Do not treat a `candidate` entry as an end-user release.
+
+Maintainers run the `Build and Deploy Kanga-Route AMI` workflow from `master`.
+It bakes a private candidate, exposes the exact AMI ID for smoke testing,
+promotes the same image without rebuilding it, and updates the catalog. Shared
+and public promotion pass through the protected `ami-publication` environment.
+See the [AMI release workflow guide](docs/ami-release-workflow.md).
 
 The bakery authenticates to AWS through GitHub Actions OIDC. Configure the
 repository variable `AWS_AMI_BUILDER_ROLE_ARN` with the ARN of a dedicated
@@ -98,6 +103,8 @@ HubSpot token and public SMTP identity are configured.
 ## Documentation
 
 - [Setup and operations](docs/setup.md)
+- [AMI catalog](docs/ami-catalog.md)
+- [AMI build and publication](docs/ami-release-workflow.md)
 - [Beginner AWS and CloudFormation deployment](docs/aws-appliance-deployment.md)
 - [Architecture](docs/architecture.md)
 - [Browser console](docs/browser-console.md)

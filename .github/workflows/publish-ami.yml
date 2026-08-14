@@ -1,0 +1,230 @@
+name: Publish AMI
+
+on:
+  workflow_call:
+    inputs:
+      ami_id:
+        description: Exact private candidate AMI to publish; the workflow never rebuilds it
+        required: true
+        type: string
+      aws_region:
+        description: AWS region that contains the AMI
+        required: true
+        type: string
+      aws_role_arn:
+        description: OIDC role ARN allowed to inspect and publish owned AMIs
+        required: true
+        type: string
+      publication_mode:
+        description: Keep the candidate private, share it, or make it public
+        required: true
+        type: string
+      confirm_publication:
+        description: Must be true when publication_mode is public
+        required: false
+        default: false
+        type: boolean
+      source_sha:
+        description: Commit baked into the candidate
+        required: true
+        type: string
+    secrets:
+      share_account_ids:
+        description: Comma- or whitespace-separated AWS account IDs used only in shared mode
+        required: false
+    outputs:
+      ami_id:
+        description: Verified AMI ID
+        value: ${{ jobs.inspect.outputs.ami_id }}
+      publication_mode:
+        description: Applied publication mode
+        value: ${{ inputs.publication_mode }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  inspect:
+    name: Verify exact candidate
+    runs-on: ubuntu-latest
+    outputs:
+      ami_id: ${{ steps.verify.outputs.ami_id }}
+
+    steps:
+      - name: Validate requested publication
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+          PUBLICATION_MODE: ${{ inputs.publication_mode }}
+          CONFIRM_PUBLICATION: ${{ inputs.confirm_publication }}
+          SHARE_ACCOUNT_IDS: ${{ secrets.share_account_ids }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "${AMI_ID}" =~ ^ami-[0-9a-f]{17}$ ]] || {
+            echo "Invalid AMI ID: ${AMI_ID}" >&2
+            exit 1
+          }
+          [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "source_sha must be a full 40-character commit SHA" >&2
+            exit 1
+          }
+          case "${PUBLICATION_MODE}" in
+            candidate)
+              ;;
+            shared)
+              [[ -n "${SHARE_ACCOUNT_IDS}" ]] || {
+                echo "AWS_AMI_SHARE_ACCOUNT_IDS is required for shared mode" >&2
+                exit 1
+              }
+              ;;
+            public)
+              [[ "${CONFIRM_PUBLICATION}" == "true" ]] || {
+                echo "confirm_publication must be selected for public mode" >&2
+                exit 1
+              }
+              ;;
+            *)
+              echo "publication_mode must be candidate, shared, or public" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: kanga-route-publish-check-${{ github.run_id }}
+
+      - name: Verify candidate ownership and state
+        id: verify
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+        run: |
+          owner_id="$(aws sts get-caller-identity --query Account --output text)"
+          state="$(aws ec2 describe-images \
+            --owners "${owner_id}" \
+            --image-ids "${AMI_ID}" \
+            --query 'Images[0].State' \
+            --output text)"
+          [[ "${state}" == "available" ]] || {
+            echo "AMI ${AMI_ID} is not an available image owned by this AWS account" >&2
+            exit 1
+          }
+          echo "ami_id=${AMI_ID}" >> "${GITHUB_OUTPUT}"
+
+  promote:
+    name: Apply AMI launch permissions
+    if: inputs.publication_mode != 'candidate'
+    needs: inspect
+    runs-on: ubuntu-latest
+    environment: ami-publication
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: kanga-route-publish-${{ github.run_id }}
+
+      - name: Share candidate with approved AWS accounts
+        if: inputs.publication_mode == 'shared'
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+          SHARE_ACCOUNT_IDS: ${{ secrets.share_account_ids }}
+        run: |
+          account_count=0
+          while IFS= read -r account_id; do
+            [[ -n "${account_id}" ]] || continue
+            [[ "${account_id}" =~ ^[0-9]{12}$ ]] || {
+              echo "AWS_AMI_SHARE_ACCOUNT_IDS contains a malformed account ID" >&2
+              exit 1
+            }
+            aws ec2 modify-image-attribute \
+              --image-id "${AMI_ID}" \
+              --launch-permission "Add=[{UserId=${account_id}}]"
+            account_count=$((account_count + 1))
+          done < <(printf '%s' "${SHARE_ACCOUNT_IDS}" | tr ',[:space:]' '\n')
+          [[ "${account_count}" -gt 0 ]] || {
+            echo "No AWS account IDs were supplied" >&2
+            exit 1
+          }
+          echo "Shared ${AMI_ID} with ${account_count} approved AWS account(s)."
+
+      - name: Verify public AMI prerequisites
+        if: inputs.publication_mode == 'public'
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+        run: |
+          block_state="$(aws ec2 get-image-block-public-access-state \
+            --query 'ImageBlockPublicAccessState' \
+            --output text)"
+          [[ "${block_state}" == "unblocked" ]] || {
+            echo "EC2 Block Public Access for AMIs must be temporarily disabled in this region" >&2
+            exit 1
+          }
+          mapfile -t snapshot_ids < <(aws ec2 describe-images \
+            --image-ids "${AMI_ID}" \
+            --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' \
+            --output text | tr '\t' '\n')
+          [[ "${#snapshot_ids[@]}" -gt 0 ]] || {
+            echo "AMI does not contain an EBS snapshot" >&2
+            exit 1
+          }
+          # JMESPath backticks are literal syntax, not shell expansion.
+          # shellcheck disable=SC2016
+          encrypted_count="$(aws ec2 describe-snapshots \
+            --snapshot-ids "${snapshot_ids[@]}" \
+            --query 'length(Snapshots[?Encrypted==`true`])' \
+            --output text)"
+          [[ "${encrypted_count}" == "0" ]] || {
+            echo "AWS does not allow AMIs backed by encrypted snapshots to be public" >&2
+            exit 1
+          }
+
+      - name: Make candidate public
+        if: inputs.publication_mode == 'public'
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+        run: |
+          aws ec2 modify-image-attribute \
+            --image-id "${AMI_ID}" \
+            --launch-permission 'Add=[{Group=all}]'
+          # JMESPath backticks are literal syntax, not shell expansion.
+          # shellcheck disable=SC2016
+          public="$(aws ec2 describe-image-attribute \
+            --image-id "${AMI_ID}" \
+            --attribute launchPermission \
+            --query 'contains(LaunchPermissions[].Group, `all`)' \
+            --output text)"
+          [[ "${public}" == "True" ]] || {
+            echo "AMI launch permissions did not become public" >&2
+            exit 1
+          }
+
+      - name: Tag publication metadata
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+          PUBLICATION_MODE: ${{ inputs.publication_mode }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          aws ec2 create-tags \
+            --resources "${AMI_ID}" \
+            --tags \
+              "Key=KangaRoutePublicationMode,Value=${PUBLICATION_MODE}" \
+              "Key=KangaRouteSourceCommit,Value=${SOURCE_SHA}"
+
+      - name: Record publication summary
+        env:
+          AMI_ID: ${{ inputs.ami_id }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PUBLICATION_MODE: ${{ inputs.publication_mode }}
+        run: |
+          {
+            echo "## AMI publication complete"
+            echo
+            echo "- Region: \`${AWS_REGION}\`"
+            echo "- AMI: \`${AMI_ID}\`"
+            echo "- Availability: \`${PUBLICATION_MODE}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

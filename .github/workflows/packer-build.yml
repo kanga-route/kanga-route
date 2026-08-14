@@ -1,26 +1,40 @@
 name: Packer Appliance Bakery
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       aws_region:
-        description: AWS region in which to build the AMI
+        description: AWS region in which to build the private AMI candidate
         required: true
-        default: us-east-1
         type: string
+      aws_role_arn:
+        description: OIDC role ARN used by Packer
+        required: true
+        type: string
+      artifact_retention_days:
+        description: Days to retain the Packer manifest
+        required: false
+        default: 30
+        type: number
+    outputs:
+      ami_id:
+        description: Exact AMI ID produced by Packer
+        value: ${{ jobs.packer-build.outputs.ami_id }}
+      manifest_artifact_name:
+        description: Name of the uploaded Packer manifest artifact
+        value: ${{ jobs.packer-build.outputs.manifest_artifact_name }}
 
 permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: packer-appliance-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   packer-build:
-    name: Build Kanga-Route appliance AMI
+    name: Build private Kanga-Route AMI candidate
     runs-on: ubuntu-latest
+    outputs:
+      ami_id: ${{ steps.candidate.outputs.ami_id }}
+      manifest_artifact_name: ${{ steps.artifact.outputs.name }}
 
     steps:
       - name: Checkout repository
@@ -34,7 +48,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
-          role-to-assume: ${{ vars.AWS_AMI_BUILDER_ROLE_ARN }}
+          role-to-assume: ${{ inputs.aws_role_arn }}
           aws-region: ${{ inputs.aws_region }}
           role-session-name: kanga-route-packer-${{ github.run_id }}
 
@@ -55,10 +69,39 @@ jobs:
             -var "aws_region=${BUILD_REGION}" \
             packer/kanga-route.pkr.hcl
 
+      - name: Read and verify candidate AMI
+        id: candidate
+        env:
+          BUILD_REGION: ${{ inputs.aws_region }}
+        run: |
+          ami_id="$(python3 scripts/ami_release.py extract \
+            --manifest packer-manifest.json \
+            --region "${BUILD_REGION}")"
+          aws ec2 wait image-available --image-ids "${ami_id}"
+          aws ec2 describe-images \
+            --owners self \
+            --image-ids "${ami_id}" \
+            --query 'Images[0].[ImageId,Name,State,CreationDate]' \
+            --output table
+          echo "ami_id=${ami_id}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## Private AMI candidate"
+            echo
+            echo "- Region: \`${BUILD_REGION}\`"
+            echo "- AMI: \`${ami_id}\`"
+            echo "- Source: \`${GITHUB_SHA}\`"
+            echo
+            echo "Smoke-test this exact candidate before approving the publication job."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Name manifest artifact
+        id: artifact
+        run: echo "name=kanga-route-packer-manifest-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+
       - name: Upload candidate manifest
         uses: actions/upload-artifact@v4
         with:
-          name: kanga-route-packer-manifest-${{ github.run_id }}
+          name: ${{ steps.artifact.outputs.name }}
           path: packer-manifest.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ inputs.artifact_retention_days }}

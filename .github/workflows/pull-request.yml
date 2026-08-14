@@ -28,7 +28,7 @@ jobs:
           python -m pip install --editable ".[dev]"
 
       - name: Compile Python sources
-        run: python -m compileall -q src tests infra
+        run: python -m compileall -q src tests infra scripts
 
       - name: Run test suite
         run: python -m pytest --verbose
