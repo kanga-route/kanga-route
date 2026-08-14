@@ -21,6 +21,8 @@ documentation.
   reimplement verification policy.
 - **Self-hosted and inspectable:** users control the runtime, credentials, data,
   and network identity.
+- **One payload, multiple environments:** Docker is a supported delivery path
+  and every VM artifact runs the same immutable container digest.
 - **Secure by default:** secrets never enter source control, submitted addresses
   are not exposed unnecessarily, and authenticated browser traffic is never
   accepted over plaintext HTTP.
@@ -38,6 +40,9 @@ Shared evidence, targets, outcomes, orchestration, and adapter selection are
 product-neutral. HubSpot is behind the stable adapter port and owns its mapping,
 limits, failures, and formatting. A cache-only mail advisory service and Postfix
 reference integration demonstrate that new consumers do not modify the engine.
+AWS AMI is the current VM artifact. ADR 0005 defines the staged path to a
+published Compose bundle, QCOW2, OVA, and cloud import formats without turning
+each format into a separate application build.
 
 ## Contributor workflow
 
@@ -465,7 +470,133 @@ advisory contract without live verification or a mandatory mail hop.
 
 ---
 
-## Milestone 5: Operational hardening
+## Milestone 5: Portable delivery
+
+**Goal:** support user-managed Docker, AWS, common on-premises hypervisors, and
+other clouds from one traceable application payload.
+
+### DIST-01 — Define the portable artifact contract
+
+**Status:** Complete
+
+**Size:** S
+
+**Labels:** `area/operations`, `area/docs`, `area/security`
+
+ADR 0005 establishes the OCI container as the canonical payload, requires
+digest identity across VM formats, defines the initial artifact matrix, and
+defers a bare-metal ISO until demonstrated demand.
+
+### DIST-02 — Publish immutable OCI images and a Compose release bundle
+
+**Size:** M
+
+**Labels:** `area/operations`, `area/security`, `help wanted`, `ready`
+
+Publish engine, browser, and policy-service images to GHCR from protected
+release workflows. A downloadable bundle contains Compose configuration,
+`.env.example`, checksums, version metadata, and an operator guide.
+
+Acceptance criteria:
+
+- Images are tagged by release and source commit and recorded by digest.
+- Production Compose pulls digests; the development override may still build.
+- A release can be installed without cloning the repository.
+- No registry, cloud, product, or SMTP credential is embedded in an image.
+- CI runs the existing cache, API, and Postfix smoke tests against pulled images.
+
+### DIST-03 — Extract shared, idempotent host provisioning
+
+**Size:** M
+
+**Labels:** `area/operations`, `area/security`
+
+Refactor the AMI provisioner so AWS and generic VM builders install the same
+Docker runtime, control plane, Compose bundle, and pinned container digest.
+
+Acceptance criteria:
+
+- Running provisioning twice is safe.
+- Platform-specific guest agents are isolated from the common provisioner.
+- Images contain no build-time SSH key, machine ID, host key, or credential.
+- AMI behavior and its smoke tests do not regress.
+
+### DIST-04 — Build and boot-test a QCOW2 appliance
+
+**Size:** L
+
+**Labels:** `area/operations`, `area/security`, `needs design`
+
+Use a pinned Ubuntu cloud image and the Packer QEMU builder to produce a QCOW2
+artifact for KVM, Proxmox, OpenStack, and OCI import.
+
+Acceptance criteria:
+
+- DHCP and cloud-init configure a fresh identity at first boot.
+- The default appliance has no public UI, enabled batch schedule, or enforced
+  mail policy.
+- A KVM boot test validates startup, local cache, one fake result, and shutdown.
+- Checksums, provenance, and limitations accompany the artifact.
+
+### DIST-05 — Build and boot-test an OVA appliance
+
+**Size:** L
+
+**Labels:** `area/operations`, `area/security`, `needs design`
+
+Package the same provisioned payload as an OVA with VMDK for VMware and
+VirtualBox. Do not fork application settings from the QCOW2 or AMI targets.
+
+Acceptance criteria:
+
+- VMware-compatible virtual hardware and DHCP defaults are documented.
+- Import and first-boot instructions require no embedded password.
+- A representative hypervisor boot test exercises the same appliance contract.
+- The release manifest records the same application container digest.
+
+### DIST-06 — Add Google Cloud raw-image import
+
+**Size:** M
+
+**Labels:** `area/operations`, `area/docs`, `needs design`
+
+Produce the required `disk.raw` archive from the validated generic disk,
+document import and networking, and boot-test the imported image in staging.
+
+### DIST-07 — Add Azure fixed-VHD import
+
+**Size:** M
+
+**Labels:** `area/operations`, `area/docs`, `needs design`
+
+Produce an aligned fixed VHD with the required provisioning support, document
+gallery import, and boot-test a correctly classified generalized image.
+
+### DIST-08 — Sign and inventory every release artifact
+
+**Size:** M
+
+**Labels:** `area/operations`, `area/security`, `help wanted`
+
+Generate an SBOM, checksums, provenance attestations, and one machine-readable
+release manifest that ties every artifact to its source and container digest.
+
+### DIST-09 — Reassess a bootable ISO after demonstrated demand
+
+**Size:** S
+
+**Labels:** `area/operations`, `area/docs`, `needs design`
+
+Do not implement an ISO from format symmetry alone. A proposal must identify a
+bare-metal or air-gapped user, unattended installation requirements, supported
+hardware, update and recovery behavior, test infrastructure, and an owner.
+
+**Milestone exit:** Docker, AMI, QCOW2, and OVA releases execute the same signed
+container digest and pass booted tests; GCP and Azure imports have verified paths.
+
+---
+
+## Milestone 6: Operational hardening
 
 These can progress alongside feature milestones when they do not alter
 unfinished core contracts.
@@ -532,6 +663,7 @@ These require an ADR and explicit maintainer approval:
 - New network probes or material SMTP behavior changes.
 - Database migrations and compatibility guarantees.
 - Multi-region public AMI replication, release signing, and long-term artifact-retention policy.
+- Changes to the supported artifact matrix or cross-format release contract.
 
 ## Explicitly out of scope for now
 
@@ -541,16 +673,18 @@ These require an ADR and explicit maintainer approval:
 - Product OAuth secrets in browser storage.
 - Product-specific verification logic in the core.
 - Using Kanga-Route as an SMTP relay, smart host, or mandatory delivery hop.
-- Additional image formats without demonstrated users and maintainers.
+- A bootable ISO without demonstrated users, installation requirements, test
+  infrastructure, and a maintainer.
 - Automatically suppressing contacts based only on `Unknown` or `Catch-All`.
 
 ## Suggested next contributor issues
 
-1. **CORE-06:** finish and publish the reusable adapter contract-test kit.
-2. **INT-01:** finish organizing HubSpot as the documented reference adapter.
-3. **INT-02:** prove portability with a CSV adapter.
-4. **MAIL-03:** design asynchronous, non-blocking cache warming.
+1. **DIST-02:** publish immutable OCI images and the standalone Compose bundle.
+2. **CORE-06:** finish and publish the reusable adapter contract-test kit.
+3. **INT-01:** finish organizing HubSpot as the documented reference adapter.
+4. **INT-02:** prove product portability with a CSV adapter.
 5. **OPS-05:** support pre-provisioned DynamoDB.
 
-OPS-05 is the smallest independent code change. CORE-06 and INT-01 are the
-best starting points for contributors preparing a new product integration.
+OPS-05 is the smallest independent code change. DIST-02 is the critical path
+for deployment portability; CORE-06 and INT-01 are the best starting points for
+contributors preparing a new product integration.

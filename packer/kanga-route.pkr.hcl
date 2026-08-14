@@ -74,7 +74,7 @@ build {
 
   provisioner "shell" {
     inline = [
-      "mkdir -p /tmp/kanga-route/bin /tmp/kanga-route/systemd /tmp/kanga-route/src/kanga_route/application /tmp/kanga-route/src/kanga_route/cache /tmp/kanga-route/src/kanga_route/crm /tmp/kanga-route/src/kanga_route/engine /tmp/kanga-route/src/kanga_route/web/static"
+      "mkdir -p /tmp/kanga-route/bin /tmp/kanga-route/systemd /tmp/kanga-route/src/kanga_route/adapters /tmp/kanga-route/src/kanga_route/application /tmp/kanga-route/src/kanga_route/cache /tmp/kanga-route/src/kanga_route/crm /tmp/kanga-route/src/kanga_route/engine /tmp/kanga-route/src/kanga_route/mail /tmp/kanga-route/src/kanga_route/web/static"
     ]
   }
 
@@ -112,6 +112,7 @@ build {
       "src/kanga_route/__init__.py",
       "src/kanga_route/contracts.py",
       "src/kanga_route/configuration.py",
+      "src/kanga_route/email_address.py",
       "src/kanga_route/main.py",
       "src/kanga_route/models.py",
     ]
@@ -120,11 +121,30 @@ build {
 
   provisioner "file" {
     sources = [
+      "src/kanga_route/adapters/__init__.py",
+      "src/kanga_route/adapters/hubspot.py",
+      "src/kanga_route/adapters/registry.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/adapters/"
+  }
+
+  provisioner "file" {
+    sources = [
       "src/kanga_route/application/__init__.py",
+      "src/kanga_route/application/batch.py",
       "src/kanga_route/application/cli.py",
+      "src/kanga_route/application/mail_advisory.py",
       "src/kanga_route/application/single_verification.py",
     ]
     destination = "/tmp/kanga-route/src/kanga_route/application/"
+  }
+
+  provisioner "file" {
+    sources = [
+      "src/kanga_route/mail/__init__.py",
+      "src/kanga_route/mail/postfix_policy.py",
+    ]
+    destination = "/tmp/kanga-route/src/kanga_route/mail/"
   }
 
   provisioner "file" {

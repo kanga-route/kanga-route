@@ -2,7 +2,7 @@
 
 # Kanga-Route
 
-Kanga-Route is a self-hosted AWS appliance for conservative email verification.
+Kanga-Route is a self-hosted appliance for conservative email verification.
 Its verification engine accepts an email address and returns product-neutral
 evidence through a browser UI, HTTP API, CLI, or integration adapter. The core
 does not require a CRM account and is designed to support products beyond any
@@ -15,6 +15,23 @@ Additional adapters can translate their own records and result formats without
 adding product-specific behavior to the verification stages.
 
 It does not send email message bodies.
+
+## Delivery model
+
+Docker is a supported deployment path and the canonical application payload.
+Operators may run the Compose project directly and manage outbound TCP 25,
+public/NAT addressing, PTR and forward DNS, SMTP identity, scheduling, and UI
+exposure themselves. The AWS AMI packages that same containerized application
+with a host control plane.
+
+QCOW2 and OVA appliances, followed by Google Cloud raw-image and Azure fixed-VHD
+imports, are planned as separately boot-tested release targets. A bootable ISO
+is deferred until a bare-metal or air-gapped user establishes its installation,
+hardware, update, recovery, and support requirements. See
+[ADR 0005](docs/adr/0005-portable-distribution-from-one-container-payload.md)
+and the [portable-delivery roadmap](docs/roadmap.md#milestone-5-portable-delivery).
+Operators choosing the current source-built path should follow the
+[user-managed Docker guide](docs/docker-deployment.md).
 
 ## MVP capabilities
 
@@ -145,6 +162,7 @@ app token; standalone verification does not.
 - [Beginner AWS and CloudFormation deployment](docs/aws-appliance-deployment.md)
 - [Architecture](docs/architecture.md)
 - [Browser console](docs/browser-console.md)
+- [User-managed Docker deployment](docs/docker-deployment.md)
 - [Integration authoring contract](docs/integration-authoring.md)
 - [Optional mail-server advice](docs/mail-server-integration.md)
 - [HubSpot user story and workflows](docs/hubspot-user-story.md)
@@ -154,6 +172,7 @@ app token; standalone verification does not.
 - [ADR 0002: Dual-mode DynamoDB cache](docs/adr/0002-dual-mode-dynamodb-caching.md)
 - [ADR 0003: HubSpot writebacks](docs/adr/0003-hubspot-granular-writebacks.md)
 - [ADR 0004: Stable adapter ports and fail-open mail advice](docs/adr/0004-stable-adapter-ports-and-fail-open-mail-advice.md)
+- [ADR 0005: Portable distribution from one container payload](docs/adr/0005-portable-distribution-from-one-container-payload.md)
 
 ## Repository layout
 
@@ -179,5 +198,7 @@ because it is `Unknown` or `Catch-All`. Run only from infrastructure and
 domains you control, respect provider policies, keep batch sizes conservative,
 and monitor IP reputation.
 
-Kanga-Route is MIT licensed and maintained by
-[@shereford](https://github.com/shereford).
+Kanga-Route is MIT licensed, authored by
+[@shereford](https://github.com/shereford), and maintained by
+[Dekglas LLC](https://dekglas.com), with `@shereford` continuing as an
+additional maintainer.

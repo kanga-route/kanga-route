@@ -146,6 +146,22 @@ services:
         exec "$$@"
       - --
     command: ["kanga-route-postfix-policy"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import socket;
+          connection=socket.create_connection(('127.0.0.1', 10040), timeout=1);
+          connection.sendall(b'request=smtpd_access_policy\n\n');
+          response=connection.recv(1024);
+          connection.close();
+          assert response == b'action=DUNNO\n\n', response
+      interval: 1s
+      timeout: 2s
+      retries: 15
+      start_period: 1s
     ports:
       - "127.0.0.1:${KANGA_ROUTE_POSTFIX_POLICY_PORT:-10040}:10040"
     restart: unless-stopped

@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Amended:** 2026-08-13
+**Superseded in part by:** [ADR 0005](0005-portable-distribution-from-one-container-payload.md)
 
 ## Context
 
