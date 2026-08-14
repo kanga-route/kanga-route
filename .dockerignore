@@ -1,0 +1,8 @@
+# Send only the files required by the Dockerfile to the build daemon.
+**
+!Dockerfile
+!requirements.txt
+!pyproject.toml
+!README.md
+!src/
+!src/**

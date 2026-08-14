@@ -1,0 +1,21 @@
+[Unit]
+Description=Kanga-Route local cache stack
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+ConditionPathExists=/opt/kanga-route/docker-compose.yml
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/kanga-route
+Environment=USE_LOCAL_DB=true
+EnvironmentFile=-/opt/kanga-route/.env
+ExecStart=/usr/local/bin/kanga-route _stack-up
+ExecStop=/usr/bin/docker compose --profile ui down
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kanga-route-stack
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+name: kanga-route-infra
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: Pulumi IaC stack for Kanga-Route EC2 Appliance, VPC, Elastic IP, and Security Groups.

@@ -1,0 +1,18 @@
+[Unit]
+Description=Kanga-Route verification run
+After=docker.service network-online.target kanga-route.service
+Requires=docker.service
+Wants=network-online.target kanga-route.service
+ConditionPathExists=/opt/kanga-route/docker-compose.yml
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kanga-route
+Environment=USE_LOCAL_DB=true
+EnvironmentFile=-/opt/kanga-route/.env
+TimeoutStartSec=infinity
+ExecStart=/usr/bin/flock --nonblock --conflict-exit-code=75 /run/lock/kanga-route.lock /usr/local/bin/kanga-route _run
+SuccessExitStatus=75
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kanga-route

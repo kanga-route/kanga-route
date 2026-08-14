@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+# Kanga-Route appliance control plane.
+
+set -Eeuo pipefail
+
+COMPOSE_DIR="${KANGA_ROUTE_DIR:-/opt/kanga-route}"
+RUN_SERVICE="kanga-route-run.service"
+RUN_TIMER="kanga-route-run.timer"
+TIMER_OVERRIDE_DIR="/etc/systemd/system/${RUN_TIMER}.d"
+TIMER_OVERRIDE_FILE="${TIMER_OVERRIDE_DIR}/schedule.conf"
+
+usage() {
+    local exit_code="${1:-1}"
+    cat <<'HELP'
+Usage: kanga-route <command>
+
+Commands:
+  run                   Trigger an immediate verification run via systemd
+  verify <email>        Verify one address without a product integration
+  status                Show the Compose stack and systemd timer status
+  logs                   Tail verification-run logs from journald
+  schedule <OnCalendar> Set the systemd calendar schedule (for example: daily,
+                         or "*-*-* 02:00:00 UTC")
+  help                   Show this help message
+HELP
+    exit "$exit_code"
+}
+
+as_root() {
+    if [[ "${EUID}" -eq 0 ]]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo "Error: this command requires root privileges and sudo is unavailable." >&2
+        return 1
+    fi
+}
+
+validate_database_mode() {
+    case "${USE_LOCAL_DB:-true}" in
+        true|false)
+            ;;
+        *)
+            echo "Error: USE_LOCAL_DB must be either 'true' or 'false'." >&2
+            return 64
+            ;;
+    esac
+}
+
+validate_web_ui_mode() {
+    case "${ENABLE_WEB_UI:-false}" in
+        true|false)
+            ;;
+        *)
+            echo "Error: ENABLE_WEB_UI must be either 'true' or 'false'." >&2
+            return 64
+            ;;
+    esac
+}
+
+effective_calendar() {
+    systemctl cat "$RUN_TIMER" --no-pager 2>/dev/null \
+        | awk -F= '/^[[:space:]]*OnCalendar=/{value=substr($0,index($0,"=")+1)} END{if(value!="") print value}'
+}
+
+write_schedule_override() {
+    local calendar="$1"
+    local contents
+    contents="$(printf '[Timer]\nOnCalendar=\nOnCalendar=%s\n' "$calendar")"
+
+    as_root install -d -m 0755 "$TIMER_OVERRIDE_DIR"
+    if [[ "${EUID}" -eq 0 ]]; then
+        printf '%s\n' "$contents" > "$TIMER_OVERRIDE_FILE"
+        chmod 0644 "$TIMER_OVERRIDE_FILE"
+    else
+        printf '%s\n' "$contents" | sudo tee "$TIMER_OVERRIDE_FILE" >/dev/null
+        sudo chmod 0644 "$TIMER_OVERRIDE_FILE"
+    fi
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    run)
+        echo "[kanga-route] Starting an immediate verification run..."
+        if ! as_root systemctl start "$RUN_SERVICE"; then
+            echo "[kanga-route] Run failed; recent journal entries follow." >&2
+            as_root journalctl --unit="$RUN_SERVICE" --lines=50 --no-pager >&2 || true
+            exit 1
+        fi
+        echo "[kanga-route] Verification run completed."
+        ;;
+    verify)
+        if [[ $# -ne 1 ]]; then
+            echo "Error: provide exactly one email address." >&2
+            exit 1
+        fi
+        validate_database_mode
+        cd "$COMPOSE_DIR"
+        if [[ "${USE_LOCAL_DB:-true}" == "true" ]]; then
+            docker compose up -d --wait dynamodb-local
+        fi
+        exec docker compose run --rm --no-deps engine kanga-route-verify "$1"
+        ;;
+    status)
+        echo "[kanga-route] Compose stack:"
+        (cd "$COMPOSE_DIR" && as_root docker compose ps)
+        echo
+        echo "[kanga-route] Scheduler:"
+        printf '  service: %s\n' "$(systemctl is-active "$RUN_SERVICE" 2>/dev/null || true)"
+        printf '  timer:   %s (%s)\n' \
+            "$(systemctl is-active "$RUN_TIMER" 2>/dev/null || true)" \
+            "$(systemctl is-enabled "$RUN_TIMER" 2>/dev/null || true)"
+        CALENDAR="$(effective_calendar || true)"
+        printf '  OnCalendar: %s\n' "${CALENDAR:-unknown}"
+        systemctl list-timers --all "$RUN_TIMER" --no-pager || true
+        ;;
+    logs)
+        echo "[kanga-route] Following verification logs from journald (Ctrl+C to stop)..."
+        as_root journalctl --unit="$RUN_SERVICE" --lines=100 --follow
+        ;;
+    schedule)
+        if [[ $# -ne 1 ]]; then
+            echo "Error: provide one systemd OnCalendar expression." >&2
+            echo 'Example: kanga-route schedule "*-*-* 02:00:00 UTC"' >&2
+            exit 1
+        fi
+        CALENDAR="$1"
+        if [[ "$CALENDAR" == *$'\n'* || "$CALENDAR" == *$'\r'* ]]; then
+            echo "Error: OnCalendar must be a single line." >&2
+            exit 1
+        fi
+        if ! systemd-analyze calendar "$CALENDAR" >/dev/null; then
+            echo "Error: invalid systemd OnCalendar expression: $CALENDAR" >&2
+            exit 1
+        fi
+
+        echo "[kanga-route] Updating OnCalendar to: $CALENDAR"
+        write_schedule_override "$CALENDAR"
+        as_root systemctl daemon-reload
+        as_root systemctl enable "$RUN_TIMER" >/dev/null
+        as_root systemctl restart "$RUN_TIMER"
+        echo "[kanga-route] Schedule updated; next run:"
+        systemctl list-timers --all "$RUN_TIMER" --no-pager || true
+        ;;
+    _run)
+        # Internal entrypoint used by kanga-route-run.service. The timer service
+        # supplies USE_LOCAL_DB through EnvironmentFile.
+        validate_database_mode
+        cd "$COMPOSE_DIR"
+        if [[ "${USE_LOCAL_DB:-true}" == "true" ]]; then
+            docker compose up -d --wait dynamodb-local
+        fi
+        exec docker compose run --rm --no-deps engine
+        ;;
+    _stack-up)
+        validate_database_mode
+        validate_web_ui_mode
+        cd "$COMPOSE_DIR"
+        if [[ "${USE_LOCAL_DB:-true}" == "true" ]]; then
+            docker compose up -d --wait dynamodb-local
+        fi
+        case "${ENABLE_WEB_UI:-false}" in
+            true)
+                exec docker compose --profile ui up -d --wait web
+                ;;
+            false)
+                docker compose --profile ui stop web >/dev/null 2>&1 || true
+                ;;
+        esac
+        if [[ "${USE_LOCAL_DB:-true}" == "false" ]]; then
+            echo "[kanga-route] Cloud DynamoDB mode selected; no local cache container required."
+        fi
+        ;;
+    help|--help|-h)
+        usage 0
+        ;;
+    *)
+        echo "Error: unknown command '$COMMAND'" >&2
+        usage
+        ;;
+esac

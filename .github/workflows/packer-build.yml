@@ -1,0 +1,64 @@
+name: Packer Appliance Bakery
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region in which to build the AMI
+        required: true
+        default: us-east-1
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: packer-appliance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  packer-build:
+    name: Build Kanga-Route appliance AMI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@v2
+        with:
+          version: "latest"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ vars.AWS_AMI_BUILDER_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: kanga-route-packer-${{ github.run_id }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Initialize Packer plugins
+        run: packer init packer/kanga-route.pkr.hcl
+
+      - name: Validate Packer template
+        run: packer validate packer/kanga-route.pkr.hcl
+
+      - name: Build AMI
+        env:
+          BUILD_REGION: ${{ inputs.aws_region }}
+        run: |
+          packer build \
+            -var "aws_region=${BUILD_REGION}" \
+            packer/kanga-route.pkr.hcl
+
+      - name: Upload candidate manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: kanga-route-packer-manifest-${{ github.run_id }}
+          path: packer-manifest.json
+          if-no-files-found: error
+          retention-days: 14

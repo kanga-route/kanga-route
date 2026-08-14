@@ -1,0 +1,87 @@
+# =========================
+# Secrets & Environment (CRITICAL)
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+hubspot_token.txt
+
+# =========================
+# Python / Verification Engine
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env_python/
+browser-tests/node_modules/
+browser-tests/playwright-report/
+browser-tests/test-results/
+
+# =========================
+# Infrastructure / Build Tools
+# =========================
+# Packer
+packer_cache/
+packer-manifest.json
+*.box
+crash.log
+
+# Terraform (If used for AWS provisioning later)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Pulumi (If used instead of Terraform)
+.pulumi/
+Pulumi.*.yaml
+!Pulumi.yaml
+
+# =========================
+# OS / IDE Files
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp

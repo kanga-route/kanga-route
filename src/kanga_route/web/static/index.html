@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Private Kanga-Route operator console for one email verification."
+    />
+    <title>Kanga-Route · Verify one address</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to verification</a>
+
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="wordmark" href="/" aria-label="Kanga-Route home">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </span>
+          <span>Kanga-Route</span>
+        </a>
+        <span class="local-badge">Local operator console</span>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero-grid" aria-labelledby="page-title">
+        <div class="hero-inner">
+          <div class="eyebrow">Single-address verification</div>
+          <h1 id="page-title">Inspect one address before you route it.</h1>
+          <p class="lede">
+            Run the same conservative verification engine used by integrations,
+            without reading from or writing to HubSpot.
+          </p>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="Email verification workspace">
+        <div class="panel verify-panel">
+          <form id="verify-form" novalidate>
+            <label for="email">Email address</label>
+            <div class="input-row">
+              <input
+                id="email"
+                name="email"
+                type="email"
+                inputmode="email"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                maxlength="254"
+                placeholder="person@example.com"
+                required
+                aria-describedby="email-help"
+              />
+              <button id="submit-button" type="submit">Verify address</button>
+            </div>
+            <p id="email-help" class="field-help">
+              The address stays on this appliance and is never placed in the URL.
+            </p>
+            <label class="check-row" for="refresh-cache">
+              <input id="refresh-cache" type="checkbox" />
+              <span>Ignore a cached result and run a fresh check</span>
+            </label>
+          </form>
+
+          <div
+            id="request-state"
+            class="request-state"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></div>
+        </div>
+
+        <article id="result-panel" class="panel result-panel" hidden>
+          <div class="result-heading">
+            <div>
+              <div class="eyebrow">Verification result</div>
+              <h2 id="result-email"></h2>
+            </div>
+            <span id="result-status" class="status-badge"></span>
+          </div>
+
+          <p id="result-summary" class="result-summary"></p>
+
+          <dl class="result-grid">
+            <div><dt>Reason</dt><dd id="result-reason"></dd></div>
+            <div><dt>Mailbox provider</dt><dd id="result-provider"></dd></div>
+            <div><dt>Role account</dt><dd id="result-role"></dd></div>
+            <div><dt>Cache</dt><dd id="result-cache"></dd></div>
+            <div><dt>SMTP response</dt><dd id="result-smtp"></dd></div>
+            <div><dt>Verified</dt><dd id="result-time"></dd></div>
+          </dl>
+
+          <div class="mx-section">
+            <h3>Mail exchangers</h3>
+            <ul id="result-mx" class="mx-list"></ul>
+          </div>
+        </article>
+
+        <aside class="interpretation" aria-labelledby="interpretation-title">
+          <h2 id="interpretation-title">Interpret conservatively</h2>
+          <p>
+            <strong>Unknown</strong> and <strong>Catch-All</strong> do not mean an
+            address is invalid. Only explicit evidence produces an Invalid result.
+          </p>
+        </aside>
+      </section>
+    </main>
+
+    <footer>
+      <span>Self-hosted and inspectable</span>
+      <span>No analytics, third-party scripts, fonts, or CDNs</span>
+    </footer>
+  </body>
+</html>
